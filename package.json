@@ -1,0 +1,26 @@
+{
+  "name": "shrek-code",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "shrek": "./bin/shrek.ts"
+  },
+  "scripts": {
+    "dev": "bun run bin/shrek.ts",
+    "test": "bun test",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "dependencies": {
+    "ink": "^7.1.1",
+    "ink-text-input": "^6.0.0",
+    "openai": "^7.23.0",
+    "react": "^19.3.0",
+    "zod": "^4.6.5",
+    "zod-to-json-schema": "^3.25.2"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "@types/react": "^19.3.0"
+  }
+}
