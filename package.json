@@ -1,7 +1,28 @@
 {
   "name": "shrek-code",
   "version": "0.1.0",
-  "private": true,
+  "description": "Build your own AI coding agent from scratch in TypeScript and Bun, one hour-long phase at a time.",
+  "license": "MIT",
+  "author": "Srikar Koppisetti",
+  "homepage": "https://github.com/srikarspace/shrek-code#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/srikarspace/shrek-code.git"
+  },
+  "keywords": [
+    "ai-agent",
+    "coding-agent",
+    "llm",
+    "openrouter",
+    "claude-code",
+    "agentic-ai",
+    "tool-calling",
+    "tutorial",
+    "bun",
+    "typescript",
+    "cli",
+    "mcp"
+  ],
   "type": "module",
   "bin": {
     "shrek": "./bin/shrek.ts"
