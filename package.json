@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Build your own AI coding agent from scratch in TypeScript and Bun, one hour-long phase at a time.",
   "license": "MIT",
-  "author": "Srikar Koppisetti",
+  "author": "srikarspace (https://github.com/srikarspace)",
   "homepage": "https://github.com/srikarspace/shrek-code#readme",
   "repository": {
     "type": "git",

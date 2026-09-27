@@ -202,7 +202,7 @@ why nobody catches it.
 ### Why a folder path becomes a filename
 
 shrek saves one conversation log per project. A project is identified by the folder you ran it in,
-which is a path like `/Users/you/repo/shrek-code`. You cannot use that as a folder name, because
+which is a path like `/Users/youruser/repo/shrek-code`. You cannot use that as a folder name, because
 slashes separate folders.
 
 Real Claude Code flattens it. Look on your own machine:
@@ -211,7 +211,7 @@ Real Claude Code flattens it. Look on your own machine:
 ls ~/.claude/projects/
 ```
 
-You will see names like `-Users-srikarkoppisetti-Desktop-repo-shrek-code`. Every run of characters
+You will see names like `-Users-youruser-Desktop-repo-shrek-code`. Every run of characters
 that is not a letter or digit became a single `-`. The leading slash became the leading `-`. shrek
 copies this rule exactly, so the two tools' folders sit next to each other and you can read both.
 
@@ -243,7 +243,7 @@ The three layers, highest priority first:
 ```
 env       the SHREK_MODEL environment variable
 file      ~/.shrek/config.json, the "model" key
-default   "qwen/qwen3.8-27b:free", written in the source
+default   "nvidia/nemotron-3-super-120b-a12b:free", written in the source
 ```
 
 and the line you are about to write:
@@ -261,7 +261,7 @@ on `0`, `""` and `false`. That difference is the whole point of round 4, and
 
 <details><summary>Guess, then open</summary>
 
-The default, `qwen/qwen3.8-27b:free`.
+The default, `nvidia/nemotron-3-super-120b-a12b:free`.
 
 Reading a config file that does not exist returns `{}` instead of throwing. A missing config file is
 what a first run looks like, not an error. Only a file that exists and cannot be parsed is an error.
@@ -487,8 +487,8 @@ export function logsDir(): string {
 
 /**
  * A folder path squashed into one safe folder name. Every run of characters
- * that is not a letter or digit becomes one `-`, so `/Users/ada/repo/shrek`
- * becomes `-Users-ada-repo-shrek`. Same rule real Claude Code uses.
+ * that is not a letter or digit becomes one `-`, so `/Users/youruser/repo/shrek`
+ * becomes `-Users-youruser-repo-shrek`. Same rule real Claude Code uses.
  * Lossy: `/a/b-c` and `/a/b/c` collide.
  */
 export function slugifyCwd(cwd: string): string {
@@ -545,7 +545,7 @@ export type ModelInfo = {
 }
 
 /** The default. Free, can use tools, good enough for Phases 0 to 15. */
-export const DEFAULT_MODEL = 'qwen/qwen3.8-27b:free'
+export const DEFAULT_MODEL = 'nvidia/nemotron-3-super-120b-a12b:free'
 
 /** [id, context tokens, USD per 1M in, USD per 1M out], as the pricing page quotes it. */
 const TABLE: [string, number, number, number][] = [
@@ -825,7 +825,7 @@ Three shapes worth naming.
 
 `main` **returns** an exit code instead of calling `process.exit` itself. So there is one exit in
 the file, and one place that turns a thrown error into a single readable line. The user sees
-`shrek: /Users/you/.shrek/config.json: JSON Parse error: ...` instead of a stack trace. An exit code
+`shrek: /Users/youruser/.shrek/config.json: JSON Parse error: ...` instead of a stack trace. An exit code
 of 0 means success and anything else means failure, which is how shell scripts and CI check whether
 your command worked.
 
@@ -860,9 +860,9 @@ bun run bin/shrek.ts --version
 
 ```
 shrek 0.1.0
-model: qwen/qwen3.8-27b:free (262k ctx, free)
+model: nvidia/nemotron-3-super-120b-a12b:free (262k ctx, free)
 key: ok
-state: /Users/srikarkoppisetti/.shrek
+state: /Users/youruser/.shrek
 ```
 
 Now the override, which is round 3 of the worked example actually running:
@@ -882,7 +882,7 @@ git ls-files | grep '^\.env$' || echo "not tracked"
 ```
 
 You should see `logs/` and `projects/`, with `projects/` holding
-`-Users-srikarkoppisetti-Desktop-repo-shrek-code`, empty until Phase 1 writes to it. The grep prints
+`-Users-youruser-Desktop-repo-shrek-code`, empty until Phase 1 writes to it. The grep prints
 `not tracked`. (`git ls-files` lists what git is really tracking, which is the question that
 matters. `git status` only tells you what changed.)
 
@@ -896,7 +896,7 @@ bun run bin/shrek.ts --version; echo "exit $?"
 The comma before the `}` is the point. JSON does not allow it. Correct failure:
 
 ```
-shrek: /Users/srikarkoppisetti/.shrek/config.json: JSON Parse error: Expected '"'
+shrek: /Users/youruser/.shrek/config.json: JSON Parse error: Expected '"'
 exit 1
 ```
 

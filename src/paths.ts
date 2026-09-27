@@ -20,8 +20,8 @@ export function logsDir(): string {
 
 /**
  * A folder path squashed into one safe folder name. Every run of characters
- * that is not a letter or digit becomes one `-`, so `/Users/ada/repo/shrek`
- * becomes `-Users-ada-repo-shrek`. Same rule real Claude Code uses.
+ * that is not a letter or digit becomes one `-`, so `/Users/youruser/repo/shrek`
+ * becomes `-Users-youruser-repo-shrek`. Same rule real Claude Code uses.
  * Lossy: `/a/b-c` and `/a/b/c` collide.
  */
 export function slugifyCwd(cwd: string): string {

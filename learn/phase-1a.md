@@ -242,7 +242,7 @@ Two entries.
 
 ```ts
 [
-  { role: 'system', content: 'You are shrek, a coding agent running at /Users/you/repo ...' },
+  { role: 'system', content: 'You are shrek, a coding agent running at /Users/youruser/repo ...' },
   { role: 'user', content: 'how many .ts files are in this repo?' },
 ]
 ```
