@@ -6,6 +6,8 @@ import { lookupModel } from '../src/llm/models'
 import { ensureStateDir, stateDir } from '../src/paths'
 import { runAgent } from '../src/agent/loop'
 import { bash } from '../src/tools/bash'
+import { enableDebug } from '../src/log'
+import { openTranscript } from '../src/session/jsonl'
 
 function versionLines(config: Config): string[] {
   const info = lookupModel(config.model)
@@ -25,6 +27,7 @@ async function runPrint(config: Config, prompt: string): Promise<number> {
   const client = createClient(config)
   const controller = new AbortController()
   process.on('SIGINT', () => controller.abort())
+  const transcript = await openTranscript()
 
   for await (const event of runAgent({
     client,
@@ -32,9 +35,8 @@ async function runPrint(config: Config, prompt: string): Promise<number> {
     tools: [bash],
     prompt,
     signal: controller.signal,
+    onMessage: (message) => transcript.write('message', { message }),
   })) {
-    console.error('EVENT', JSON.stringify(event))
-    await Bun.sleep(2000)
     if (event.type === 'turn.step' && event.kind === 'tool') console.error(event.line)
 
     if (event.type === 'turn.complete') {
@@ -52,6 +54,7 @@ async function runPrint(config: Config, prompt: string): Promise<number> {
 async function main(argv: string[]): Promise<number> {
   const config = await loadConfig()
   await ensureStateDir()
+  enableDebug(config.debug || argv.includes('--debug'))
 
   if (argv.includes('--version') || argv.includes('-v')) {
     for (const line of versionLines(config)) console.log(line)

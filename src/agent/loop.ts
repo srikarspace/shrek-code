@@ -7,6 +7,7 @@ import type { AnyTool } from '../tools/types'
 import { toOpenAITool } from '../tools/types'
 import type { AgentEvent, TurnCompleteReason } from './events'
 import { systemPrompt } from './systemPrompt'
+import { debug } from '../log'
 
 export type RunOptions = {
   client: OpenAI
@@ -17,6 +18,8 @@ export type RunOptions = {
   /** The cap. Twenty rounds is more than any sane task needs. */
   maxSteps?: number
   signal?: AbortSignal
+    /** Called for every message added to the array, in order. The transcript writer. */
+  onMessage?: (message: ChatCompletionMessageParam) => Promise<void>
 }
 
 /** Validated and ready, or the exact string the model gets back instead. */
@@ -57,10 +60,15 @@ export async function* runAgent(opts: RunOptions): AsyncGenerator<AgentEvent, vo
   const byName = new Map(opts.tools.map((tool) => [tool.name, tool]))
   const schemas = opts.tools.map(toOpenAITool)
 
-  const messages: ChatCompletionMessageParam[] = [
-    { role: 'system', content: systemPrompt(cwd) },
-    { role: 'user', content: opts.prompt },
-  ]
+  const messages: ChatCompletionMessageParam[] = []
+  async function add(message: ChatCompletionMessageParam): Promise<void> {
+    messages.push(message)
+    await opts.onMessage?.(message)
+  }
+
+  await add({ role: 'system', content: systemPrompt(cwd) })
+  await add({ role: 'user', content: opts.prompt })
+
   yield { type: 'turn.start', turnId, text: opts.prompt }
 
   let answer = ''
@@ -74,14 +82,16 @@ export async function* runAgent(opts: RunOptions): AsyncGenerator<AgentEvent, vo
         break
       }
 
+      await debug('request', { model: opts.model, step, messages })
       const response = await opts.client.chat.completions.create(
         { model: opts.model, messages, tools: schemas, max_tokens: 8000 },
         { signal },
       )
+      await debug('response', response)
 
       const message = response.choices[0]?.message
       if (!message) throw new Error('the model returned no choices')
-      messages.push(message)
+      await add(message)
 
       if (message.content) {
         answer = message.content
@@ -108,7 +118,7 @@ export async function* runAgent(opts: RunOptions): AsyncGenerator<AgentEvent, vo
           }
         }
 
-        messages.push({ role: 'tool', tool_call_id: call.id, content: output })
+        await add({ role: 'tool', tool_call_id: call.id, content: output })
         yield { type: 'turn.step', turnId, step, kind: 'result', id: call.id, output }
       }
 
@@ -117,6 +127,7 @@ export async function* runAgent(opts: RunOptions): AsyncGenerator<AgentEvent, vo
   } catch (error) {
     reason = signal.aborted ? 'aborted' : 'error'
     answer = error instanceof Error ? error.message : String(error)
+    await debug('error', { message: answer })
   }
 
   yield {

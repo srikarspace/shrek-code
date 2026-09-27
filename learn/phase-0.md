@@ -202,7 +202,7 @@ why nobody catches it.
 ### Why a folder path becomes a filename
 
 shrek saves one conversation log per project. A project is identified by the folder you ran it in,
-which is a path like `/Users/youruser/repo/shrek-code`. You cannot use that as a folder name, because
+which is a path like `/Users/youruser/repo/your-agent`. You cannot use that as a folder name, because
 slashes separate folders.
 
 Real Claude Code flattens it. Look on your own machine:
@@ -211,7 +211,7 @@ Real Claude Code flattens it. Look on your own machine:
 ls ~/.claude/projects/
 ```
 
-You will see names like `-Users-youruser-Desktop-repo-shrek-code`. Every run of characters
+You will see names like `-Users-youruser-repo-your-agent`. Every run of characters
 that is not a letter or digit became a single `-`. The leading slash became the leading `-`. shrek
 copies this rule exactly, so the two tools' folders sit next to each other and you can read both.
 
@@ -371,7 +371,7 @@ Expect 1.3 or later.
 
 ```json
 {
-  "name": "shrek-code",
+  "name": "shrek",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -383,6 +383,12 @@ Expect 1.3 or later.
   }
 }
 ```
+
+Type it as written, even though your folder is called something else. The folder name never appears
+in the code, because Phase 0 works it out from the current directory at runtime. The command name
+does appear, in every later phase, in `~/.shrek` and in about sixty commands you are going to paste,
+so the agent you build is called shrek whatever you named the folder it lives in. Rename it at the
+end if you like, when you can see every place it reaches.
 
 `"bin"` is what makes a package installable as a terminal command. Later, `bun link` reads it and
 puts a `shrek` command on your PATH so you can type `shrek` from anywhere. Until then you type
@@ -882,7 +888,7 @@ git ls-files | grep '^\.env$' || echo "not tracked"
 ```
 
 You should see `logs/` and `projects/`, with `projects/` holding
-`-Users-youruser-Desktop-repo-shrek-code`, empty until Phase 1 writes to it. The grep prints
+`-Users-youruser-repo-your-agent`, empty until Phase 1 writes to it. The grep prints
 `not tracked`. (`git ls-files` lists what git is really tracking, which is the question that
 matters. `git status` only tells you what changed.)
 
@@ -947,7 +953,7 @@ is gone, not misspelled. Run
 `curl -s https://openrouter.ai/api/v1/models | grep -o '"id":"[^"]*free"'` and update the table.
 One line to fix, which is the reason the table exists.
 
-**Conversation folders start with a hyphen.** `rm -rf -Users-you-repo-shrek-code` fails, because
+**Conversation folders start with a hyphen.** `rm -rf -Users-youruser-repo-your-agent` fails, because
 `rm` reads the leading `-` as a flag. Use `rm -rf -- <folder>`. This will catch you in Phase 7.
 
 **Never print any part of the key.** Not a prefix, not even the length. `--version` output is the

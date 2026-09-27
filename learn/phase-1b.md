@@ -14,7 +14,7 @@ Today shrek starts keeping records. Two of them, in two files, for two different
 
 ```sh
 shrek -p "what is the current git branch?"
-ls ~/.shrek/projects/-Users-you-repo-shrek-code/
+ls ~/.shrek/projects/-Users-youruser-repo-your-agent/
 ```
 
 After this, that second command lists a file named after the session, and inside it is every
@@ -508,14 +508,15 @@ That finishes Phase 1.
 
 ```sh
 bun run bin/shrek.ts -p "what is the current git branch?"
-ls -t ~/.shrek/projects/*shrek-code/ | head -1
+D=~/.shrek/projects/$(printf '%s' "$PWD" | tr -cs 'A-Za-z0-9' '-')
+ls -t "$D" | head -1
 ```
 
 The answer prints as it did in part a, and the `ls` names a file like
 `9f3c1a20-4b7e-4c8a-9c21-6f0e2b8d4a11.jsonl`. Now read it back:
 
 ```sh
-F=$(ls -t ~/.shrek/projects/*shrek-code/*.jsonl | head -1)
+F=$(ls -t "$D"/*.jsonl | head -1)
 jq -r '.type + " " + (.message.role // "")' "$F"
 ```
 
@@ -607,7 +608,7 @@ Expect a normal answer and `exit 0`. The empty `catch` in `log.ts` is doing its 
 `FileSink` is the faster option for many small writes and it needs the file opened for append
 explicitly. At one write per message, `appendFile` is not the bottleneck.
 
-**Transcript folders start with a hyphen.** `-Users-you-repo-shrek-code`, from Phase 0's slug rule.
+**Transcript folders start with a hyphen.** `-Users-youruser-repo-your-agent`, from Phase 0's slug rule.
 `rm -rf -Users-...` fails because `rm` reads the leading `-` as a flag. Use `rm -rf -- <folder>`.
 
 **`jq` may not be installed.** `brew install jq`. It is worth it: every file shrek writes from here
