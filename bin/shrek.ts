@@ -1,9 +1,11 @@
 #!/usr/bin/env bun
 import pkg from '../package.json'
 import { loadConfig, type Config } from '../src/config'
-import { keyStatus } from '../src/llm/client'
+import { createClient, keyStatus } from '../src/llm/client'
 import { lookupModel } from '../src/llm/models'
 import { ensureStateDir, stateDir } from '../src/paths'
+import { runAgent } from '../src/agent/loop'
+import { bash } from '../src/tools/bash'
 
 function versionLines(config: Config): string[] {
   const info = lookupModel(config.model)
@@ -19,6 +21,34 @@ function versionLines(config: Config): string[] {
   ]
 }
 
+async function runPrint(config: Config, prompt: string): Promise<number> {
+  const client = createClient(config)
+  const controller = new AbortController()
+  process.on('SIGINT', () => controller.abort())
+
+  for await (const event of runAgent({
+    client,
+    model: config.model,
+    tools: [bash],
+    prompt,
+    signal: controller.signal,
+  })) {
+    console.error('EVENT', JSON.stringify(event))
+    await Bun.sleep(2000)
+    if (event.type === 'turn.step' && event.kind === 'tool') console.error(event.line)
+
+    if (event.type === 'turn.complete') {
+      if (event.reason === 'answer') {
+        console.log(event.answer)
+        return 0
+      }
+      console.error(`shrek: turn ended with ${event.reason}: ${event.answer}`)
+      return 1
+    }
+  }
+  return 1
+}
+
 async function main(argv: string[]): Promise<number> {
   const config = await loadConfig()
   await ensureStateDir()
@@ -28,7 +58,17 @@ async function main(argv: string[]): Promise<number> {
     return 0
   }
 
-  console.error('usage: shrek --version')
+  const flag = argv.findIndex((a) => a === '-p' || a === '--print')
+  if (flag !== -1) {
+    const prompt = argv[flag + 1]
+    if (!prompt) {
+      console.error('usage: shrek -p "your question"')
+      return 1
+    }
+    return runPrint(config, prompt)
+  }
+
+  console.error('usage: shrek --version | shrek -p "your question"')
   return 1
 }
 

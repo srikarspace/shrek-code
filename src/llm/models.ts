@@ -12,7 +12,7 @@ export type ModelInfo = {
 }
 
 /** The default. Free, can use tools, good enough for Phases 0 to 15. */
-export const DEFAULT_MODEL = 'qwen/qwen3.8-27b:free'
+export const DEFAULT_MODEL = 'nvidia/nemotron-3-super-120b-a12b:free'
 
 /** [id, context tokens, USD per 1M in, USD per 1M out], as the pricing page quotes it. */
 const TABLE: [string, number, number, number][] = [

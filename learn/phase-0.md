@@ -53,6 +53,11 @@ call. Every later phase assumes these four answers already exist.
 
 Seven files. That is the phase.
 
+> **New to TypeScript?** [`learn/ts/phase-0.md`](./ts/phase-0.md) explains every
+> TypeScript construct this phase uses, in the order it appears, using these same pieces of code.
+> The code blocks below link into it. You do not need it to finish the phase; it is there for when
+> a line of syntax is in the way of the idea.
+
 ---
 
 ## What you'll learn
@@ -249,7 +254,8 @@ model: envStr('SHREK_MODEL') ?? pick(file.model) ?? DEFAULTS.model
 
 `??` is the nullish coalescing operator. `a ?? b` means "use `a`, unless `a` is `null` or
 `undefined`, in which case use `b`". Note that it is different from `||`, which also falls through
-on `0`, `""` and `false`. That difference is the whole point of round 4.
+on `0`, `""` and `false`. That difference is the whole point of round 4, and
+[TS-8](./ts/phase-0.md#ts-8) has what each one does to the types.
 
 ### Round 1: you just cloned the repo. No file, no environment variable.
 
@@ -417,6 +423,9 @@ the shape of tool inputs in Phase 2.
 }
 ```
 
+*TypeScript here: [`strict` and `noUncheckedIndexedAccess`](./ts/phase-0.md#ts-15) ·
+[`verbatimModuleSyntax`](./ts/phase-0.md#ts-14).*
+
 `"jsx": "react-jsx"` is the modern JSX mode, the one where you do not have to `import React` at the
 top of every component. `noEmit` is honest here, because Bun runs your TypeScript directly and
 `tsc` is only ever a checker in this project. `resolveJsonModule` is what lets `bin/shrek.ts` read
@@ -499,6 +508,9 @@ export async function ensureStateDir(cwd: string = process.cwd()): Promise<strin
 }
 ```
 
+*TypeScript here: [annotations](./ts/phase-0.md#ts-2) · [`?.`](./ts/phase-0.md#ts-8) ·
+[`async` and `Promise<T>`](./ts/phase-0.md#ts-13).*
+
 Three things to notice.
 
 These are functions, not constants. If you wrote `export const STATE_DIR = ...` the value would be
@@ -576,8 +588,17 @@ export function costOf(info: ModelInfo, inputTokens: number, outputTokens: numbe
 }
 ```
 
+*TypeScript here: [`type` aliases](./ts/phase-0.md#ts-3) ·
+[tuples and `readonly`](./ts/phase-0.md#ts-10) · [`Record<K, V>`](./ts/phase-0.md#ts-9) ·
+[why `lookupModel` returns `| undefined`](./ts/phase-0.md#ts-15).*
+
 A **token** is roughly three quarters of a word. Models are billed per token and can only hold so
 many at once, which is what `context` measures. 262,144 tokens is around 200,000 words.
+
+**The underscores in `262_144` and `1_000_000` do nothing.** They are a thousands separator you are
+allowed to type in source code, and the parser throws them away, so `1_000_000 === 1000000`. They
+exist because `1000000` and `10000000` look identical at a glance and `1_000_000` and `10_000_000`
+do not. Use them in any long number from here on.
 
 The table keeps the dollars-per-million numbers you can check against OpenRouter's website, and the
 division to per-token happens in exactly one place.
@@ -672,6 +693,11 @@ export async function loadConfig(): Promise<Readonly<Config>> {
 }
 ```
 
+*TypeScript here: [`string | undefined`](./ts/phase-0.md#ts-4) ·
+[optional properties](./ts/phase-0.md#ts-5) · [`unknown`](./ts/phase-0.md#ts-6) ·
+[narrowing](./ts/phase-0.md#ts-7) · [`as const`](./ts/phase-0.md#ts-11) ·
+[`as`](./ts/phase-0.md#ts-12) · [`Readonly<T>`](./ts/phase-0.md#ts-9).*
+
 Those four lines are stacked on purpose. Read down the column and you see the precedence. Read
 across a row and you see every source for one setting. When Phase 5 adds a setting, it goes in this
 list and nowhere else.
@@ -736,6 +762,9 @@ export function createClient(config: Config): OpenAI {
 }
 ```
 
+*TypeScript here: [literal union return types](./ts/phase-0.md#ts-4) ·
+[`import type`](./ts/phase-0.md#ts-14).*
+
 Notice where the error lives. Throwing on a missing key is correct **here** and would be wrong in
 `loadConfig`, because `--version` has to work on a machine with no key at all. Working out the
 config never fails over a missing key. Using it does.
@@ -787,6 +816,10 @@ const code = await main(process.argv.slice(2)).catch((error: unknown) => {
 
 process.exit(code)
 ```
+
+*TypeScript here: [`import type` and JSON imports](./ts/phase-0.md#ts-14) ·
+[`Promise<number>`](./ts/phase-0.md#ts-13) ·
+[narrowing `unknown` in a `catch`](./ts/phase-0.md#ts-7).*
 
 Three shapes worth naming.
 
