@@ -8,6 +8,13 @@ import { runAgent } from '../src/agent/loop'
 import { bash } from '../src/tools/bash'
 import { enableDebug } from '../src/log'
 import { openTranscript } from '../src/session/jsonl'
+import { createRegistry } from '../src/tools/registry'
+import { read } from '../src/tools/read'
+import { write } from '../src/tools/write'
+import { edit } from '../src/tools/edit'
+
+const registry = createRegistry([bash, read, write, edit])
+
 
 function versionLines(config: Config): string[] {
   const info = lookupModel(config.model)
@@ -32,7 +39,7 @@ async function runPrint(config: Config, prompt: string): Promise<number> {
   for await (const event of runAgent({
     client,
     model: config.model,
-    tools: [bash],
+    registry,
     prompt,
     signal: controller.signal,
     onMessage: (message) => transcript.write('message', { message }),

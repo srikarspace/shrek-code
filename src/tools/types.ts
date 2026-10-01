@@ -1,11 +1,12 @@
 import { z } from 'zod'
-import type { ChatCompletionFunctionTool } from 'openai/resources/chat/completions'
 
 /** What a tool is allowed to know about the run it is part of. */
 export type ToolContext = {
   cwd: string
   /** Aborted when the user hits ctrl-c. Long tools must respect it. */
   signal: AbortSignal
+  /** Absolute paths Read has returned this run. Edit refuses a path that is not in here. */
+  readFiles: Set<string>
 }
 
 /** One capability the model can ask for. `T` is the shape of its arguments. */
@@ -23,13 +24,3 @@ export type Tool<T> = {
 
 /** Any tool, for the arrays and maps that hold tools of different shapes. */
 export type AnyTool = Tool<any>
-
-/** The tool as OpenRouter wants it, built from the Zod schema so the two cannot drift. */
-export function toOpenAITool(tool: AnyTool): ChatCompletionFunctionTool {
-  const parameters = z.toJSONSchema(tool.params) as Record<string, unknown>
-  delete parameters.$schema
-  return {
-    type: 'function',
-    function: { name: tool.name, description: tool.description, parameters },
-  }
-}

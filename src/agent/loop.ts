@@ -1,18 +1,15 @@
 import type OpenAI from 'openai'
-import type {
-  ChatCompletionMessageParam,
-  ChatCompletionMessageToolCall,
-} from 'openai/resources/chat/completions'
-import type { AnyTool } from '../tools/types'
-import { toOpenAITool } from '../tools/types'
+import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 import type { AgentEvent, TurnCompleteReason } from './events'
 import { systemPrompt } from './systemPrompt'
 import { debug } from '../log'
+import type { Registry } from '../tools/registry'
+import type { ToolContext } from '../tools/types'
 
 export type RunOptions = {
   client: OpenAI
   model: string
-  tools: AnyTool[]
+  registry: Registry
   prompt: string
   cwd?: string
   /** The cap. Twenty rounds is more than any sane task needs. */
@@ -22,34 +19,6 @@ export type RunOptions = {
   onMessage?: (message: ChatCompletionMessageParam) => Promise<void>
 }
 
-/** Validated and ready, or the exact string the model gets back instead. */
-type Prepared = { tool: AnyTool; args: unknown } | { error: string }
-
-function prepare(tools: Map<string, AnyTool>, call: ChatCompletionMessageToolCall): Prepared {
-  if (call.type !== 'function') return { error: `Error: unsupported tool call type ${call.type}` }
-
-  const tool = tools.get(call.function.name)
-  if (!tool) {
-    const known = [...tools.keys()].join(', ')
-    return { error: `Error: no tool named ${call.function.name}. Available: ${known}` }
-  }
-
-  let raw: unknown
-  try {
-    raw = JSON.parse(call.function.arguments || '{}')
-  } catch {
-    const sent = JSON.stringify(call.function.arguments)
-    return { error: `Error: arguments were not valid JSON: ${sent}` }
-  }
-
-  const parsed = tool.params.safeParse(raw)
-  if (!parsed.success) {
-    return { error: `Error: invalid arguments for ${tool.name}: ${parsed.error.message}` }
-  }
-
-  return { tool, args: parsed.data }
-}
-
 export async function* runAgent(opts: RunOptions): AsyncGenerator<AgentEvent, void, void> {
   const cwd = opts.cwd ?? process.cwd()
   const maxSteps = opts.maxSteps ?? 20
@@ -57,11 +26,12 @@ export async function* runAgent(opts: RunOptions): AsyncGenerator<AgentEvent, vo
   const turnId = crypto.randomUUID()
   const startedAt = Date.now()
 
-  const byName = new Map(opts.tools.map((tool) => [tool.name, tool]))
-  const schemas = opts.tools.map(toOpenAITool)
+  const schemas = opts.registry.toOpenAITools();
+  const ctx: ToolContext = { cwd, signal, readFiles: new Set() }
 
   const messages: ChatCompletionMessageParam[] = []
   async function add(message: ChatCompletionMessageParam): Promise<void> {
+    console.log(message);
     messages.push(message)
     await opts.onMessage?.(message)
   }
@@ -102,24 +72,12 @@ export async function* runAgent(opts: RunOptions): AsyncGenerator<AgentEvent, vo
       if (calls.length === 0) break
 
       for (const call of calls) {
-        const ready = prepare(byName, call)
-        const name = call.type === 'function' ? call.function.name : call.type
-        const line = 'error' in ready ? `${name}(?)` : ready.tool.renderLine(ready.args)
+        const { name, line } = opts.registry.renderCall(call)
         yield { type: 'turn.step', turnId, step, kind: 'tool', id: call.id, name, line }
 
-        let output: string
-        if ('error' in ready) {
-          output = ready.error
-        } else {
-          try {
-            output = await ready.tool.execute(ready.args, { cwd, signal })
-          } catch (error) {
-            output = `Error: ${error instanceof Error ? error.message : String(error)}`
-          }
-        }
-
-        await add({ role: 'tool', tool_call_id: call.id, content: output })
-        yield { type: 'turn.step', turnId, step, kind: 'result', id: call.id, output }
+        const result = await opts.registry.dispatch(call, ctx)
+        await add({ role: 'tool', tool_call_id: result.id, content: result.output })
+        yield { type: 'turn.step', turnId, step, kind: 'result', id: result.id, output: result.output }
       }
 
       if (step === maxSteps) reason = 'max_steps'

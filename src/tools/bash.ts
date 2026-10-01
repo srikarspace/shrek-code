@@ -15,7 +15,8 @@ export const bash: Tool<z.infer<typeof params>> = {
   name: 'Bash',
   description:
     'Run a shell command in the project directory and return its combined stdout and stderr. ' +
-    'Use this to inspect the project, run builds and tests, and read or change files. ' +
+    'Use this to run builds, tests, git and other programs. Do not use it to read, create or ' +
+    'change files: use Read, Write and Edit for those. ' +
     'The exit code is appended when it is not zero. Commands time out after 120 seconds.',
   params,
   renderLine: ({ command }) => `$ ${command}`,
