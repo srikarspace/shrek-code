@@ -16,7 +16,17 @@ export type RunOptions = {
   maxSteps?: number
   signal?: AbortSignal
     /** Called for every message added to the array, in order. The transcript writer. */
-  onMessage?: (message: ChatCompletionMessageParam) => Promise<void>
+  onMessage?: (message: ChatCompletionMessageParam, meta?: MessageMeta) => Promise<void>
+}
+
+/** Facts about a message that are not part of it: what it cost, how long it took. */
+export type MessageMeta = {
+  step?: number
+  model?: string
+  usage?: unknown
+  latencyMs?: number
+  isError?: boolean
+  durationMs?: number
 }
 
 export async function* runAgent(opts: RunOptions): AsyncGenerator<AgentEvent, void, void> {
@@ -30,10 +40,9 @@ export async function* runAgent(opts: RunOptions): AsyncGenerator<AgentEvent, vo
   const ctx: ToolContext = { cwd, signal, readFiles: new Set() }
 
   const messages: ChatCompletionMessageParam[] = []
-  async function add(message: ChatCompletionMessageParam): Promise<void> {
-    console.log(message);
+  async function add(message: ChatCompletionMessageParam, meta?: MessageMeta): Promise<void> {
     messages.push(message)
-    await opts.onMessage?.(message)
+    await opts.onMessage?.(message, meta)
   }
 
   await add({ role: 'system', content: systemPrompt(cwd) })
@@ -53,6 +62,7 @@ export async function* runAgent(opts: RunOptions): AsyncGenerator<AgentEvent, vo
       }
 
       await debug('request', { model: opts.model, step, messages })
+      const requestedAt = Date.now()
       const response = await opts.client.chat.completions.create(
         { model: opts.model, messages, tools: schemas, max_tokens: 8000 },
         { signal },
@@ -61,7 +71,12 @@ export async function* runAgent(opts: RunOptions): AsyncGenerator<AgentEvent, vo
 
       const message = response.choices[0]?.message
       if (!message) throw new Error('the model returned no choices')
-      await add(message)
+      await add(message, {
+        step,
+        model: response.model,
+        usage: response.usage,
+        latencyMs: Date.now() - requestedAt,
+      })
 
       if (message.content) {
         answer = message.content
@@ -75,8 +90,12 @@ export async function* runAgent(opts: RunOptions): AsyncGenerator<AgentEvent, vo
         const { name, line } = opts.registry.renderCall(call)
         yield { type: 'turn.step', turnId, step, kind: 'tool', id: call.id, name, line }
 
+        const calledAt = Date.now()
         const result = await opts.registry.dispatch(call, ctx)
-        await add({ role: 'tool', tool_call_id: result.id, content: result.output })
+        await add(
+          { role: 'tool', tool_call_id: result.id, content: result.output },
+          { step, isError: result.isError, durationMs: Date.now() - calledAt },
+        )
         yield { type: 'turn.step', turnId, step, kind: 'result', id: result.id, output: result.output }
       }
 

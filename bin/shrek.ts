@@ -42,11 +42,13 @@ async function runPrint(config: Config, prompt: string): Promise<number> {
     registry,
     prompt,
     signal: controller.signal,
-    onMessage: (message) => transcript.write('message', { message }),
+    onMessage: (message, meta) => transcript.write('message', { message, ...meta }),
   })) {
     if (event.type === 'turn.step' && event.kind === 'tool') console.error(event.line)
 
     if (event.type === 'turn.complete') {
+      const { type, ...fields } = event
+      await transcript.write(type, fields)
       if (event.reason === 'answer') {
         console.log(event.answer)
         return 0
