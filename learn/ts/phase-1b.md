@@ -38,7 +38,7 @@ And `await undefined` is legal and instant, so the `await` needs no guard of its
 is load-bearing for a reason that has nothing to do with types: it is what keeps transcript lines in
 the same order as the array. TypeScript cannot help you there: `Promise<void>` and `void` are
 interchangeable in enough positions that a forgotten `await` on a function like this compiles
-perfectly and reorders your file. Round 2 of the phase's worked example is that bug.
+perfectly and reorders your file.
 
 ---
 

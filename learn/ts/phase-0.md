@@ -375,8 +375,8 @@ wraps it for you. And `await` unwraps in the other direction, so `const file = a
 readFileLayer(...)` gives you a `FileConfig`, not a promise of one.
 
 Forget an `await` and the type usually catches you: `Promise<FileConfig>` has no `.model`, so
-`file.model` fails to compile. Usually, not always, which is why Phase 1b has a worked example about
-a missing `await` reordering a file.
+`file.model` fails to compile. Usually, not always, and Phase 1b's transcript writer is a place where a
+missing `await` would reorder a file.
 
 ---
 

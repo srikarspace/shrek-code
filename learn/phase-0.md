@@ -1,307 +1,104 @@
 # Phase 0: project setup
 
-About an hour. Most of it is typing seven small files.
+About an hour. Seven small files.
 
 ---
 
-## What we are building
+## The big picture
 
-shrek is a coding agent that lives in your terminal. When it is finished you will type this:
+shrek is a coding agent that lives in your terminal. When it's finished:
 
 ```sh
 shrek -p "how many TypeScript files are in this repo?"
 ```
 
-and get an answer back.
+shrek sends your question to an AI model along with a note: *you can ask me to run commands, read
+files and edit files.* The model replies "run `ls src/**/*.ts | wc -l`", shrek runs it, sends back
+the output, and the model answers. That loop is the product; you build it in Phase 1.
 
-The interesting part is how. shrek does not know the answer. It sends your question over the
-internet to an AI model, and along with the question it sends a message that means roughly: *you
-are allowed to run shell commands, read files and edit files. You cannot do them yourself. Ask me
-and I will do them for you.*
+Phase 0 builds what every later phase reads first. Four answers:
 
-So the model replies "run `ls src/**/*.ts | wc -l`". shrek runs it on your machine, sends the
-output back, and the model writes the final answer. That loop is the entire product. You build it
-in Phase 1.
+1. Which AI model am I talking to?
+2. What is my API key?
+3. Where do I save conversations?
+4. Where do I write debug logs?
 
-### Where Phase 0 fits
+At the end, `shrek --version` prints those four answers and exits. It never contacts the AI, so a
+wrong model or missing key shows up in 50ms instead of in the middle of Phase 1.
 
-Before any of that can happen, shrek has to know four boring things:
+**OpenRouter** is the service shrek talks to: one key, one request format, hundreds of models,
+many of them free. That is why the project costs under $2.
 
-1. **Which AI model am I talking to?** There are dozens. Some are free, some cost money.
-2. **What is my API key?** The password that lets me talk to it.
-3. **Where do I save the conversation?** So you can scroll back tomorrow.
-4. **Where do I write debug logs?** So when it breaks you can read the raw network traffic.
+## Files
 
-Phase 0 answers those four and nothing else. At the end you have one command that prints the
-answers and exits. It never contacts the AI.
-
-That is on purpose. If the model name is wrong or the key is missing, you want to find out from a
-command that runs in 50 milliseconds, not in Phase 1 while you are also debugging your first API
-call. Every later phase assumes these four answers already exist.
-
-### The files you are about to write
-
-| File | In React terms | Its job |
-|---|---|---|
-| `package.json` | same thing | dependencies and scripts |
-| `tsconfig.json` | same thing | TypeScript settings |
-| `bin/shrek.ts` | `index.js`, the entry point | read command-line flags, print, set the exit code |
-| `src/config.ts` | your settings loader | answers questions 1 and 2 |
-| `src/paths.ts` | nothing in React, it is new | answers questions 3 and 4 |
-| `src/llm/models.ts` | a constants file | the list of AI models, their sizes and their prices |
-| `src/llm/client.ts` | your `api.js` wrapper around `fetch` | the object Phase 1 uses to call the AI |
-
-Seven files. That is the phase.
-
-> **New to TypeScript?** [`learn/ts/phase-0.md`](./ts/phase-0.md) explains every
-> TypeScript construct this phase uses, in the order it appears, using these same pieces of code.
-> The code blocks below link into it. You do not need it to finish the phase; it is there for when
-> a line of syntax is in the way of the idea.
-
----
-
-## What you'll learn
-
-- **Layered config.** How a program decides between a built-in default, a saved preference and a
-  one-off override, and why that decision belongs in one function.
-- **Why the model list has prices in it.** Phase 7 adds a cost counter, and it has to get the
-  numbers from somewhere.
-- **Turning a folder path into a filename.** Every tool that saves per-project data needs this.
-- **Entry point versus library.** The file that prints things and the files that compute things
-  should be different files.
-
----
-
-## From the course
-
-Most phases start from a chapter of a Python course in `../learn-claude-code/`. Phase 0 does not,
-because that course has 17 chapters about agents and zero about project setup. This phase is
-shrek's own setup.
-
-The reference instead is two example files in `../claude-code/examples/settings/`, from the real
-Claude Code repo. First, do not mix up two similarly-named files:
-
-| File | Whose | What is in it | Built in |
-|---|---|---|---|
-| `~/.shrek/config.json` | yours, one per computer | which model, which API key | Phase 0 |
-| `<project>/.shrek/settings.json` | one per project | which tools need your approval | Phase 4 |
-
-Those examples are of the **second** kind. You are building the **first** kind today. So read them
-for exactly one lesson.
-
-Here is the entirety of `settings-lax.json`:
-
-```json
-{
-  "permissions": { "disableBypassPermissionsMode": "disable" },
-  "strictKnownMarketplaces": []
-}
-```
-
-Two keys. The file next to it, `settings-strict.json`, has about twenty, nested four levels deep.
-Same format. Same program reads both.
-
-That is the lesson: **treat every key as optional and merge whatever you find on top of your
-defaults.** If your reader insisted on all twenty keys it would crash on the four-line file. Your
-`loadConfig()` follows this rule today.
-
-One extra detail worth thirty seconds. The strict file contains `"httpProxyPort": null`. In JSON,
-writing `null` is how you say "this setting exists and it is turned off". So in your reader, an
-explicit `null` has to behave exactly like a key that was never there. Round 5 of the worked
-example is the bug you get when it does not.
-
-For code style, `../claude-code/mods/` is the reference. Copy two habits from it: one short comment
-above every export, and `strict` turned on in `tsconfig.json`.
-
----
-
-## Anthropic to OpenAI translation
-
-Some background you need before this table makes sense.
-
-There is no single standard for "talk to an AI model". Anthropic, who make Claude, have their own
-request format. OpenAI have a different one, and because they were first, their format became the
-one everybody copies.
-
-**OpenRouter** is a middleman. You send it an OpenAI-shaped request, it forwards your request to
-whichever of several hundred models you named, and it sends the reply back in OpenAI shape. One
-account, one key, one format, many models. That is why shrek uses it, and why the whole project
-costs under $2.
-
-The course you are following is written against Anthropic's format. shrek is written against
-OpenAI's. So every chapter needs translating, and the plan keeps a running table of the
-differences. Most of the table is about message shapes, and none of that matters yet because
-nothing sends a message in Phase 0. What matters today is how you build the client object:
-
-| The course (Anthropic) | shrek (OpenRouter, OpenAI shape) |
+| File | Job |
 |---|---|
-| `Anthropic()` with no arguments. It finds the key in your environment by itself | `new OpenAI({ apiKey, baseURL })`, with both values passed in explicitly |
-| always talks to `api.anthropic.com` | talks to `https://openrouter.ai/api/v1`, and that has to be changeable |
-| `client.messages.create(...)` | `client.chat.completions.create(...)` |
-| model names like `claude-sonnet-4-5` | names like `vendor/model`, where a `:free` on the end is part of the name |
+| `package.json` | dependencies, scripts, and the `shrek` command name |
+| `tsconfig.json` | TypeScript settings |
+| `bin/shrek.ts` | the entry point (like `index.js`): read flags, print, exit |
+| `src/config.ts` | answers 1 and 2: which model, which key |
+| `src/paths.ts` | answers 3 and 4: where files go |
+| `src/llm/models.ts` | every model shrek knows, with size and price |
+| `src/llm/client.ts` | the object Phase 1 uses to call the model |
 
-**The mistake this phase is designed to prevent.** The `openai` package will quietly read
-`process.env.OPENAI_API_KEY` if you do not pass `apiKey` yourself. If you have ever touched an
-OpenAI project on this machine, that variable is probably still sitting in your shell. Leave out
-`apiKey` and everything looks fine, your `--version` says the key is fine, and then every single
-request in Phase 1 fails with `401 No auth credentials found` from OpenRouter. You will spend an
-hour looking at the wrong file.
-
-Two defences, both built today. Always pass `apiKey` explicitly. And make the `key:` line in
-`--version` report shrek's own config, never whether the client object got created.
+TypeScript help for this phase: [`learn/ts/phase-0.md`](./ts/phase-0.md).
 
 ---
 
-## Background
+## Remember this
 
-### Why config is layered
+> Every setting can come from three places, and **the most local one wins**: an environment
+> variable beats `~/.shrek/config.json`, which beats the default in the code. All of it is worked
+> out once, in one function, and passed down like props. And "empty" counts as "not set", so a
+> blank env var or a `null` in the file falls through to the next layer.
+>
+> **Env beats file beats default. Empty means absent.**
 
-Your React apps already do a simpler version of this. You put the API URL in `.env`, read it once,
-and pass it down as props. You do not call `process.env` inside every component. Same idea here,
-same reason.
+---
 
-shrek needs a model name, a key, a base URL and a debug flag. Each one can come from three places:
+## Why
 
-- A **default** written in the source, so a fresh clone runs with zero setup.
-- A **file** at `~/.shrek/config.json`, so your preference survives across every project and every
-  terminal window.
-- An **environment variable**, so you can override one single run without editing anything.
+**Layered config.** You already do this in React: read `.env` once, pass values down as props.
+The env var is the easiest to change, so it wins for a one-off override. The file holds your
+preference. The default lets a fresh project run with zero setup. One function means you can print
+what's active and test it without touching your real environment.
 
-When two of them disagree, the order is environment, then file, then default. The reason is how
-hard each is to change. An environment variable is the easiest thing to set and the easiest to
-undo, so it wins. A default compiled into the source is the hardest to change, so it loses. Order
-by cost of change and the override you grab in a hurry is the one that takes effect.
+**Prices in the model list.** Phase 7 shows what a session cost, Phase 11 needs the context size,
+and switching away from a rate-limited free model must be one env var. Prices are stored per token
+so the "per million" division happens exactly once.
 
-The sloppy version is writing `process.env.SHREK_MODEL || 'some-default'` wherever you happen to
-need it. That breaks in three ways. You cannot test it without changing your real environment. You
-cannot print what is currently active, because no single place knows. And the defaults drift apart,
-so two places disagree and you get a bug that only appears on a machine where the variable is not
-set.
-
-One function, called once at startup, returning a frozen object that everything else receives as an
-argument. This pays off in Phase 9, where a sub-agent runs on a different model from its parent.
-That is easy only because the model arrives as a value you can change, not as an environment read
-buried inside the loop.
-
-### Why the model list has prices in it
-
-It could be one line: `export const MODEL = "..."`. Three later phases need more than that.
-
-Phase 7 shows you what the session cost. To do that it needs dollars per token for the model that
-actually ran. Phase 16 runs long tool chains, and free models are rate limited and will start
-refusing you, so switching models has to cost one environment variable and not an edit in four
-files. Phase 11 shortens the conversation when it gets close to filling the model's memory, so it
-needs that memory size as a number.
-
-Prices are stored **per token**, not per million tokens. Pricing pages quote per million, so the
-division happens once, in the one place the table is built. Store per million and you end up
-converting units at every call site, and one of those will eventually be wrong by a factor of a
-million. A cost readout that is wrong by a million still looks like a plausible number, which is
-why nobody catches it.
-
-### Why a folder path becomes a filename
-
-shrek saves one conversation log per project. A project is identified by the folder you ran it in,
-which is a path like `/Users/youruser/repo/your-agent`. You cannot use that as a folder name, because
-slashes separate folders.
-
-Real Claude Code flattens it. Look on your own machine:
-
-```sh
-ls ~/.claude/projects/
-```
-
-You will see names like `-Users-youruser-repo-your-agent`. Every run of characters
-that is not a letter or digit became a single `-`. The leading slash became the leading `-`. shrek
-copies this rule exactly, so the two tools' folders sit next to each other and you can read both.
-
-It is lossy. `/a/b-c` and `/a/b/c` both flatten to `-a-b-c`, so two different projects would share
-a folder. You could fix it by sticking a hash of the real path on the end, which also destroys the
-only good thing about the scheme, which is that you can read the name and know which project it is.
-Real Claude Code made the same trade. Make it knowingly.
-
-### Why Ink gets installed when nothing is drawn
-
-**Ink is React for the terminal.** Same React you know, same components, same hooks. Instead of
-`<div>` and `<span>` rendering to a browser, you write `<Box>` and `<Text>` and it renders to
-characters in your terminal. Real Claude Code is built with it, and so is shrek's UI in Phase 3.
-
-Nothing draws in Phase 0. Ink and the `jsx` setting in `tsconfig.json` still go in today, because a
-JSX setup that has never compiled a single `.tsx` file is a setup you have not actually tested.
-Step 8 compiles one throwaway component to prove it works, then deletes it. Better to find a broken
-`tsconfig.json` now than in Phase 3 while you are also learning Ink.
+**A folder path becomes a folder name.** Conversations are saved per project, and a project is the
+folder you ran shrek in. `/Users/youruser/repo/your-agent` can't be a folder name, so every run of
+non-letters becomes `-`: `-Users-youruser-repo-your-agent`. Real Claude Code uses the same rule.
 
 ---
 
 ## Worked example
 
-Work out the value of one setting, `model`, by hand, before you write `loadConfig()`. Cover the
-answers and guess each round first.
-
-The three layers, highest priority first:
-
-```
-env       the SHREK_MODEL environment variable
-file      ~/.shrek/config.json, the "model" key
-default   "nvidia/nemotron-3-super-120b-a12b:free", written in the source
-```
-
-and the line you are about to write:
+Work out `model` by hand before writing `loadConfig()`:
 
 ```ts
 model: envStr('SHREK_MODEL') ?? pick(file.model) ?? DEFAULTS.model
 ```
 
-`??` is the nullish coalescing operator. `a ?? b` means "use `a`, unless `a` is `null` or
-`undefined`, in which case use `b`". Note that it is different from `||`, which also falls through
-on `0`, `""` and `false`. That difference is the whole point of round 4, and
-[TS-8](./ts/phase-0.md#ts-8) has what each one does to the types.
+`a ?? b` means "use `a` unless it is `null` or `undefined`". See [TS-8](./ts/phase-0.md#ts-8).
 
-### Round 1: you just cloned the repo. No file, no environment variable.
+### Round 1: file says `{"model": "z-ai/glm-4.7-flash"}`, and you run `export SHREK_MODEL=qwen/qwen3.8-flash`
 
 <details><summary>Guess, then open</summary>
 
-The default, `nvidia/nemotron-3-super-120b-a12b:free`.
-
-Reading a config file that does not exist returns `{}` instead of throwing. A missing config file is
-what a first run looks like, not an error. Only a file that exists and cannot be parsed is an error.
+`qwen/qwen3.8-flash`. Env beats file. This is how you'll escape a rate-limited model later without
+touching code.
 </details>
 
-### Round 2: the file says `{"model": "z-ai/glm-4.7-flash"}`. No environment variable.
+### Round 2: same file, but `export SHREK_MODEL=` with nothing after the `=`
 
 <details><summary>Guess, then open</summary>
 
-`z-ai/glm-4.7-flash`. The default is still there. It just loses.
-</details>
+With a plain `process.env.SHREK_MODEL ?? ...`, the empty string wins, because `??` only skips
+`null` and `undefined`. Phase 1 would send `{"model": ""}` and get a confusing 400.
 
-### Round 3: same file, and you also run `export SHREK_MODEL=qwen/qwen3.8-flash`.
-
-<details><summary>Guess, then open</summary>
-
-`qwen/qwen3.8-flash`. The environment beats the file.
-
-This is the case the Phase 0 test checks, and it is how you will escape a rate-limited free model in
-Phase 16 without touching any code.
-</details>
-
-### Round 4: same file, but you run `export SHREK_MODEL=` with nothing after the `=`.
-
-Guess the winner. Then guess what happens on the first API call in Phase 1.
-
-<details><summary>Open</summary>
-
-The environment wins, with the value `""`.
-
-`??` only falls through on `null` and `undefined`. An empty string is neither of those, so it counts
-as a real value and it wins. `--version` prints `model: ` with nothing after it, which is very easy
-to skim past. Then Phase 1 sends `{"model": ""}` to OpenRouter and gets back a 400 about a field you
-never deliberately set.
-
-And `export SHREK_MODEL=` is not a strange thing to type. It is what you do when you mean "turn the
-override off". It is also what a CI config produces from a variable declared with no value.
-
-Fix it with a helper, not by switching to `||`. For anything read from the environment, empty means
-absent:
+So `envStr` treats blank as absent:
 
 ```ts
 function envStr(name: string): string | undefined {
@@ -309,30 +106,14 @@ function envStr(name: string): string | undefined {
   return value ? value : undefined
 }
 ```
-
-Trim as well as check, because `SHREK_MODEL=" "` happens. The price is that no shrek setting can
-ever have a meaningful empty-string value. Worth it.
 </details>
 
-### Round 5: the file says `{"model": null}`. No environment variable.
+### Round 3: the file says `{"model": null}`
 
-Same question. Then think back to `"httpProxyPort": null` in the strict settings file.
+<details><summary>Guess, then open</summary>
 
-<details><summary>Open</summary>
-
-The default wins, if you use `??`. `??` handles `null` correctly all by itself.
-
-The trap is the merge you might reach for instead, because it looks so clean:
-
-```ts
-const config = { ...DEFAULTS, ...fileConfig }
-```
-
-Spread copies any key that is **present**, and `"model": null` is present. So your default gets
-overwritten with `null`, and `null` travels all the way into the request body.
-
-So `pick` is the file-side twin of `envStr`. It throws out `null`, non-strings and blanks in one
-place:
+The tempting merge `{ ...DEFAULTS, ...fileConfig }` copies `model: null` over the default, because
+spread copies any key that is present. `pick` is the file-side twin of `envStr`:
 
 ```ts
 function pick(value: unknown): string | undefined {
@@ -341,21 +122,16 @@ function pick(value: unknown): string | undefined {
 ```
 </details>
 
-Two rules cover every square of that grid. Empty environment variables count as absent. Null file
-values count as absent.
-
 ---
 
 ## Your task
 
-Eleven steps. Each one runs on its own.
+Eleven steps.
 
 ### 1. Install Bun
 
-**Why.** Bun is a JavaScript runtime, the same job Node does. Three reasons shrek uses it. It runs
-`.ts` and `.tsx` files directly with no build step, so there is no bundler to configure. It reads
-`.env` by itself, so there is no `dotenv` package. And `bun test` is the test runner from Phase 2
-onward. I checked, and it is not installed on this machine yet.
+**Why.** Bun runs `.ts` files directly (no build step), reads `.env` by itself, and has a test
+runner. It does the job Node does.
 
 ```sh
 curl -fsSL https://bun.sh/install | bash
@@ -367,7 +143,7 @@ Expect 1.3 or later.
 
 ### 2. package.json
 
-**Why.** Same file you already know from React projects. The one new part is `bin`.
+**Why.** Same file as in React projects. `bin` is the new part: it names the terminal command.
 
 ```json
 {
@@ -384,29 +160,17 @@ Expect 1.3 or later.
 }
 ```
 
-Type it as written, even though your folder is called something else. The folder name never appears
-in the code, because Phase 0 works it out from the current directory at runtime. The command name
-does appear, in every later phase, in `~/.shrek` and in about sixty commands you are going to paste,
-so the agent you build is called shrek whatever you named the folder it lives in. Rename it at the
-end if you like, when you can see every place it reaches.
-
-`"bin"` is what makes a package installable as a terminal command. Later, `bun link` reads it and
-puts a `shrek` command on your PATH so you can type `shrek` from anywhere. Until then you type
-`bun run bin/shrek.ts`.
-
-Now let Bun write the dependency lists, so the versions recorded are the ones actually installed:
+The command is called shrek whatever your folder is called. Then install:
 
 ```sh
 bun add openai ink react ink-text-input zod zod-to-json-schema
 bun add -d @types/bun @types/react
 ```
 
-`openai` is the client library. `ink` and `react` are the terminal UI for Phase 3. `zod` describes
-the shape of tool inputs in Phase 2.
+`openai` is the client library, `ink` and `react` are Phase 3's terminal UI, `zod` describes tool
+inputs from Phase 1.
 
 ### 3. tsconfig.json
-
-**Why.** TypeScript settings. Mostly ordinary, with two lines that matter.
 
 ```json
 {
@@ -432,43 +196,26 @@ the shape of tool inputs in Phase 2.
 *TypeScript here: [`strict` and `noUncheckedIndexedAccess`](./ts/phase-0.md#ts-15) ·
 [`verbatimModuleSyntax`](./ts/phase-0.md#ts-14).*
 
-`"jsx": "react-jsx"` is the modern JSX mode, the one where you do not have to `import React` at the
-top of every component. `noEmit` is honest here, because Bun runs your TypeScript directly and
-`tsc` is only ever a checker in this project. `resolveJsonModule` is what lets `bin/shrek.ts` read
-the version number out of `package.json` instead of keeping a second copy that drifts.
-
-If `tsc` complains about `Response` or `fetch` from inside the `openai` types, add `"dom"` to
-`lib`. Try without it first.
+- `noEmit`: Bun runs the TypeScript; `tsc` only checks it.
+- `resolveJsonModule` lets `bin/shrek.ts` read the version from `package.json`.
 
 ### 4. .env.example, and check what git ignores
 
-**Why.** Your API key is a password. If it lands in a git commit, it is in the history forever, and
-deleting the file later does not remove it.
+**Why.** Your API key is a password. Once in a git commit, it's in the history forever.
 
 ```sh
 printf 'OPENROUTER_API_KEY=\n' > .env.example
 git check-ignore -v .env .env.local
-```
-
-All four should print the rule that matches them. `.env.example` is committed **with an empty
-value** so anyone cloning the repo learns the variable's name and nothing else.
-
-Now put your real key in `.env` and prove git is ignoring it:
-
-```sh
 printf 'OPENROUTER_API_KEY=sk-or-v1-...\n' > .env
 git status --short
 ```
 
-`.env` must not appear in that output. If it does, stop and fix `.gitignore` before typing anything
-else.
+`.env` must not appear in `git status`. If it does, fix `.gitignore` before going on.
 
 ### 5. src/paths.ts
 
-**Why.** This file answers questions 3 and 4 from the top: where conversations go and where logs
-go. Every other file that touches the disk asks this one for the path. That is deliberate, because
-in Phase 2 your tests need to redirect all of it to a temp folder, and they can only do that if
-there is one place to redirect.
+**Why.** Answers 3 and 4. Every file that touches disk asks this one, so tests can redirect it all
+with one variable.
 
 ```ts
 import { mkdir } from 'node:fs/promises'
@@ -517,24 +264,13 @@ export async function ensureStateDir(cwd: string = process.cwd()): Promise<strin
 *TypeScript here: [annotations](./ts/phase-0.md#ts-2) · [`?.`](./ts/phase-0.md#ts-8) ·
 [`async` and `Promise<T>`](./ts/phase-0.md#ts-13).*
 
-Three things to notice.
-
-These are functions, not constants. If you wrote `export const STATE_DIR = ...` the value would be
-locked in the moment the file is imported, and a test could never point shrek somewhere else.
-Computing it on each call is what makes `SHREK_STATE_DIR` work.
-
-`homedir()` comes from `node:os`, not `process.env.HOME`. `HOME` is missing in some environments,
-including parts of macOS's background job system and several CI runners.
-
-`mkdir` with `recursive: true` creates missing parents and does not complain if the folder is
-already there, so there is no "check then create" dance.
+- Functions, not constants, so `SHREK_STATE_DIR` is read each call and tests can change it.
+- `recursive: true` creates parents and doesn't complain if the folder exists.
 
 ### 6. src/llm/models.ts
 
-**Why.** The list of AI models shrek can talk to. Phase 7 reads the prices out of here to show you
-what a session cost. Phase 11 reads the context sizes to decide when the conversation is getting
-too long. And when a free model starts rate limiting you in Phase 16, this is the file that makes
-switching a one-word change.
+**Why.** Phase 7 reads prices from here, Phase 11 reads context sizes, and switching models is one
+word.
 
 ```ts
 /** One row: what to send, how much it can hold, what it costs. */
@@ -598,27 +334,15 @@ export function costOf(info: ModelInfo, inputTokens: number, outputTokens: numbe
 [tuples and `readonly`](./ts/phase-0.md#ts-10) · [`Record<K, V>`](./ts/phase-0.md#ts-9) ·
 [why `lookupModel` returns `| undefined`](./ts/phase-0.md#ts-15).*
 
-A **token** is roughly three quarters of a word. Models are billed per token and can only hold so
-many at once, which is what `context` measures. 262,144 tokens is around 200,000 words.
-
-**The underscores in `262_144` and `1_000_000` do nothing.** They are a thousands separator you are
-allowed to type in source code, and the parser throws them away, so `1_000_000 === 1000000`. They
-exist because `1000000` and `10000000` look identical at a glance and `1_000_000` and `10_000_000`
-do not. Use them in any long number from here on.
-
-The table keeps the dollars-per-million numbers you can check against OpenRouter's website, and the
-division to per-token happens in exactly one place.
-
-`lookupModel` returns `undefined` for an unknown id instead of throwing, and `--version` will say
-"unknown to registry" while still using it. The alternative, rejecting anything not in the table,
-gives a nicer error for a typo but turns this file into a gate. OpenRouter adds and removes models
-every few weeks, and a model added on Tuesday should work on Tuesday.
+- A **token** is about three quarters of a word. Models bill per token and hold a fixed number
+  (`context`).
+- `1_000_000` is just `1000000` with separators for readability.
+- An unknown id still works; OpenRouter adds models weekly.
 
 ### 7. src/config.ts
 
-**Why.** This file answers questions 1 and 2: which model, and which key. It is the only place in
-the entire project that reads `process.env`. Everything else takes the finished object as an
-argument, the same way a React component takes props instead of reaching into global state.
+**Why.** Answers 1 and 2, and the only file that reads `process.env`. Everything else gets the
+finished object as an argument.
 
 ```ts
 import { configPath } from './paths'
@@ -704,17 +428,14 @@ export async function loadConfig(): Promise<Readonly<Config>> {
 [narrowing](./ts/phase-0.md#ts-7) · [`as const`](./ts/phase-0.md#ts-11) ·
 [`as`](./ts/phase-0.md#ts-12) · [`Readonly<T>`](./ts/phase-0.md#ts-9).*
 
-Those four lines are stacked on purpose. Read down the column and you see the precedence. Read
-across a row and you see every source for one setting. When Phase 5 adds a setting, it goes in this
-list and nowhere else.
-
-`apiKey` is the odd one out. It has no default, so its chain is two links instead of three and its
-type is `string | undefined`. That is exactly why `--version` can honestly report a missing key
-rather than inventing one.
+- Read down the four lines and you see the precedence; across a row, every source for one setting.
+- A missing file is a normal first run. A broken file is an error that names the path.
+- `apiKey` has no default, so `--version` can honestly say it's missing.
 
 ### 8. Prove the JSX setup works, then delete it
 
-**Why.** Thirty seconds now to avoid an hour in Phase 3.
+**Why.** Thirty seconds now saves an hour in Phase 3. **Ink** is React for the terminal: `<Box>`
+and `<Text>` instead of `<div>` and `<span>`.
 
 ```sh
 mkdir -p src/ui
@@ -731,13 +452,11 @@ bun run typecheck
 rm src/ui/Smoke.tsx
 ```
 
-Expect `ink is wired` printed, and a clean typecheck. If it fails, the cause is almost always `jsx`
-or `jsxImportSource` in `tsconfig.json`, or a missing `@types/react`.
+Expect `ink is wired` and a clean typecheck.
 
 ### 9. src/llm/client.ts
 
-**Why.** This is the object that actually talks to the AI. Nothing calls it in Phase 0. It is
-written now so Phase 1 adds one thing, the loop, rather than two.
+**Why.** The object that talks to the model. Written now so Phase 1 only adds the loop.
 
 ```ts
 import OpenAI from 'openai'
@@ -771,14 +490,12 @@ export function createClient(config: Config): OpenAI {
 *TypeScript here: [literal union return types](./ts/phase-0.md#ts-4) ·
 [`import type`](./ts/phase-0.md#ts-14).*
 
-Notice where the error lives. Throwing on a missing key is correct **here** and would be wrong in
-`loadConfig`, because `--version` has to work on a machine with no key at all. Working out the
-config never fails over a missing key. Using it does.
+- Always pass `apiKey`. Otherwise the SDK quietly uses a stale `OPENAI_API_KEY` from your shell.
+- The missing-key error lives here, not in `loadConfig`, so `--version` still works without a key.
 
 ### 10. bin/shrek.ts
 
-**Why.** The entry point, the `index.js` of this project. It is the only file allowed to print to
-the screen or decide the exit code. Everything above it computes values and returns them.
+**Why.** The entry point. The only file that prints or sets the exit code.
 
 ```ts
 #!/usr/bin/env bun
@@ -827,34 +544,19 @@ process.exit(code)
 [`Promise<number>`](./ts/phase-0.md#ts-13) ·
 [narrowing `unknown` in a `catch`](./ts/phase-0.md#ts-7).*
 
-Three shapes worth naming.
-
-`main` **returns** an exit code instead of calling `process.exit` itself. So there is one exit in
-the file, and one place that turns a thrown error into a single readable line. The user sees
-`shrek: /Users/youruser/.shrek/config.json: JSON Parse error: ...` instead of a stack trace. An exit code
-of 0 means success and anything else means failure, which is how shell scripts and CI check whether
-your command worked.
-
-`ensureStateDir()` runs before the flag check, so `--version` is the thing that creates `~/.shrek`
-on a first run. That is why printing the state folder is worth a line: it reports a folder that now
-definitely exists.
-
-`versionLines` returns an array of strings instead of printing them. Phase 3 renders these same four
-facts inside an Ink component, and a function that returns strings can be used by both.
+- `main` returns an **exit code** (0 = success, anything else = failure) instead of exiting. One
+  exit, one place that turns errors into a readable line.
+- `versionLines` returns strings, so Phase 3's UI can reuse it.
 
 ### 11. Commit
 
 ```sh
 git add -A
 git diff --cached | grep -iE 'sk-or-|api[_-]?key'
-```
-
-That grep will find `.env.example`, which literally contains the text `OPENROUTER_API_KEY=`. Read
-the match, confirm it is only that one empty line, then:
-
-```sh
 git commit -m "phase 0: project setup"
 ```
+
+The grep finds only `.env.example`'s empty line. Anything else, stop.
 
 ---
 
@@ -871,26 +573,13 @@ key: ok
 state: /Users/youruser/.shrek
 ```
 
-Now the override, which is round 3 of the worked example actually running:
-
 ```sh
 SHREK_MODEL=qwen/qwen3.8-flash bun run bin/shrek.ts --version
-```
-
-Only the model line changes, to `qwen/qwen3.8-flash (1000k ctx, paid)`. Exit code is 0 both times,
-which you can check with `echo $?`.
-
-Then confirm the folders exist and the key is not tracked by git:
-
-```sh
-ls ~/.shrek ~/.shrek/projects
 git ls-files | grep '^\.env$' || echo "not tracked"
 ```
 
-You should see `logs/` and `projects/`, with `projects/` holding
-`-Users-youruser-repo-your-agent`, empty until Phase 1 writes to it. The grep prints
-`not tracked`. (`git ls-files` lists what git is really tracking, which is the question that
-matters. `git status` only tells you what changed.)
+Only the model line changes, to `qwen/qwen3.8-flash (1000k ctx, paid)`. The grep prints
+`not tracked`.
 
 ### Deliberate failure: a broken config file
 
@@ -899,98 +588,32 @@ printf '{"model": "z-ai/glm-4.7-flash",}\n' > ~/.shrek/config.json
 bun run bin/shrek.ts --version; echo "exit $?"
 ```
 
-The comma before the `}` is the point. JSON does not allow it. Correct failure:
-
 ```
 shrek: /Users/youruser/.shrek/config.json: JSON Parse error: Expected '"'
 exit 1
 ```
 
-The exact parser wording changes between Bun versions. What must be there is the full path and an
-exit code of 1.
+- A stack trace: the `try`/`catch` in `readFileLayer` is missing.
+- A normal `--version`: the error is being swallowed, which silently ignores your file.
 
-- A stack trace instead means your `try`/`catch` in `readFileLayer` is missing.
-- A normal `--version` on the default model means you are swallowing the error, which is worse than
-  crashing, because it silently ignores the file you just edited.
-
-Fix the file and watch layer 2 win, which is round 2 running:
-
-```sh
-printf '{"model": "z-ai/glm-4.7-flash"}\n' > ~/.shrek/config.json
-bun run bin/shrek.ts --version
-rm ~/.shrek/config.json
-```
-
-### Second failure: no key
-
-```sh
-env -u OPENROUTER_API_KEY bun run bin/shrek.ts --version; echo "exit $?"
-```
-
-Expect `key: missing` and `exit 0`.
-
-Exit 0 is deliberate. `--version` is a diagnostic, and a diagnostic that refuses to run when
-something is wrong is useless at exactly the moment you need it. The error belongs in
-`createClient`, and you will meet it in Phase 1.
-
-If this prints `key: ok`, your `.env` file beat the `env -u`. Try `mv .env .env.off`, rerun, then
-move it back.
+Remove the trailing comma to watch the file layer win, then `rm ~/.shrek/config.json`.
 
 ---
 
-## Notes and gotchas
+## Gotchas
 
-**Bun loads `.env` by itself.** No `dotenv` import, no `--env-file` flag. Variables already set in
-your shell beat the file, which is why the test above uses `env -u` rather than setting an empty
-value.
-
-**The `:free` on the end is part of the model name.** `qwen/qwen3.8-27b` and
-`qwen/qwen3.8-27b:free` are two different entries at two different prices. Dropping five characters
-moves you from free to billed, with no warning.
-
-**Model ids get retired.** If Phase 1 comes back with `404 No endpoints found for <id>`, the model
-is gone, not misspelled. Run
-`curl -s https://openrouter.ai/api/v1/models | grep -o '"id":"[^"]*free"'` and update the table.
-One line to fix, which is the reason the table exists.
-
-**Conversation folders start with a hyphen.** `rm -rf -Users-youruser-repo-your-agent` fails, because
-`rm` reads the leading `-` as a flag. Use `rm -rf -- <folder>`. This will catch you in Phase 7.
-
-**Never print any part of the key.** Not a prefix, not even the length. `--version` output is the
-first thing anybody pastes into a bug report.
-
-**`SHREK_STATE_DIR` is what makes tests possible.** It works only because `stateDir()` reads the
-environment every time it is called. Turn those functions into constants and your Phase 2 tests
-start writing into your real home folder.
-
-**Zod might make one dependency unnecessary.** If `bun add zod` installed version 4, it has
-`z.toJSONSchema` built in and `zod-to-json-schema` is redundant. Do not act on that now. Phase 2 is
-where tool schemas get generated, and that is where you check which version you have.
+- **`:free` is part of the model name.** Drop it and you're on the paid version.
+- **Model ids get retired.** `404 No endpoints found` means gone, not misspelled. Update the table.
+- **Never print any part of the key**, not even its length.
+- **Bun loads `.env` itself.** Shell variables beat the file, which is why tests use `env -u`.
 
 ---
 
 ## Recap
 
-`~/.shrek` exists, with `logs/` and `projects/<slug>/` waiting for Phase 1 to write into them, named
-by the same rule real Claude Code uses.
+`~/.shrek` exists with `logs/` and `projects/<slug>/` ready. `loadConfig()` resolves four settings
+from three layers into one frozen object. `models.ts` lists every model with prices and sizes, and
+`createClient` builds the OpenRouter client with the key passed explicitly.
 
-`loadConfig()` works out four settings from three sources, with one rule for empty environment
-values and one for null file values, and hands back a frozen object that everything else receives as
-an argument.
-
-`src/llm/models.ts` lists every model shrek can reach, with per-token prices Phase 7 will read and
-context sizes Phase 11 will read. Switching models is one environment variable.
-
-`createClient` builds the OpenRouter client with the key passed in explicitly, and `--version`
-prints the four facts you will check first for the next twenty phases.
-
-Three questions to check you got it.
-
-1. The file says `{"model": null}` and your shell has `SHREK_MODEL=" "`. Which layer wins, and which
-   of the two guard functions catches each of those two values?
-
-2. Prices are stored per token, not per million. Name the bug the per-million version causes, say
-   where in the code it would show up, and say why nobody would catch it in review.
-
-3. `--version` exits 0 when the key is missing, but `createClient` throws when the key is missing.
-   Both are correct. What is the general rule?
+1. The file says `{"model": null}` and the shell has `SHREK_MODEL=" "`. Which layer wins?
+2. `--version` exits 0 with no key, but `createClient` throws. Why are both right?

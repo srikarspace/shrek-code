@@ -358,8 +358,7 @@ caller got { value: undefined, done: true }
 
 Read the interleaving rather than the values. `[gen] starting` printed after `created it`, so the
 body really had not begun. After that the two halves take turns, and taking turns is exactly what
-[round 9 of the stage document](../phase-1a.md#round-9-why-the-loop-hands-values-back-one-at-a-time)
-worked out that the loop needs.
+is what the loop needs: hand back one event, wait, carry on.
 
 `{ value, done }` is the raw protocol. `for...of` and `for await...of` are sugar over it: they call
 `.next()` until `done` is `true` and give you each `value`.
@@ -508,8 +507,8 @@ const messages: ChatCompletionMessageParam[] = [
 ```
 
 `ChatCompletionMessageParam` is itself a discriminated union, keyed on `role`. So `{ role: 'tool' }`
-with no `tool_call_id` is a compile error, and `{ role: 'user', tool_call_id: '...' }` is too. A
-chunk of the OpenAI-shape rules in the phase's translation table is enforced for you, though not the
+with no `tool_call_id` is a compile error, and `{ role: 'user', tool_call_id: '...' }` is too. Some
+of the message-shape rules are enforced for you, though not the
 important one, since no type can check that every `tool_call_id` got an answer.
 
 `import type` rather than `import` because these are only ever types; see [TS-14 in phase
