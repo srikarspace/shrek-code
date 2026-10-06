@@ -3,7 +3,8 @@
 My own AI coding agent, built from scratch in TypeScript and Bun, one phase at a time, as a way to
 learn how coding agents work.
 
-**Status.** Phases 0, 1 and 2a are done. Phase 2b is next, and nineteen more are planned below.
+**Status.** Phases 0 to 2 are done. Phase 3 (a terminal UI, then evals) is in progress, and
+eighteen more are planned below.
 
 ## What it does today
 
@@ -15,13 +16,14 @@ First line updated to let x = 1.
 ```
 
 shrek asks a model what to do, runs the tools the model asks for, feeds the results back, and repeats
-until the model answers. It has Bash plus Read, Write and Edit, all behind one registry that
-validates every call before it runs. Tool lines go to stderr and the answer to stdout, so you can pipe
-it. A tool that fails is data the model recovers from rather than a crash. Every message lands in a
-transcript on disk, and the raw request and response bodies land in a debug log.
+until the model answers. It has Bash, Read, Write, Edit, Glob and Grep, all behind one registry
+that validates every call before it runs. When the model asks for several tools at once, they run in
+parallel and their results go back in order. Tool lines go to stderr and the answer to stdout, so
+you can pipe it. A tool that fails is data the model recovers from rather than a crash. Every
+message lands in a transcript on disk, and the raw request and response bodies land in a debug log.
 
 There is no interface, no permission prompt, no streaming and no resume yet. Those are phases 3, 4, 6
-and 7.
+and 7. From Phase 3c on, an eval suite reruns real tasks against the agent after every phase.
 
 ## Running it
 
@@ -31,6 +33,7 @@ Needs Bun, a bash shell and an [OpenRouter](https://openrouter.ai) API key, set 
 ```sh
 bun install
 bun run bin/shrek.ts -p "your question"
+bun test
 ```
 
 ## Notes
@@ -50,8 +53,10 @@ A phase with more than an hour of work splits into lettered parts, `1a` and `1b`
 | 1 | agent loop | [a](./learn/phase-1a.md) the loop as a state machine, the `Tool` shape, the bash tool | done |
 | | | [b](./learn/phase-1b.md) the JSONL transcript and the debug log | done |
 | 2 | tool use | [a](./learn/phase-2a.md) the tool registry, and Read, Write and Edit | done |
-| | | [b](./learn/phase-2b.md) Glob and Grep, parallel calls, unit tests | next |
-| 3 | TUI | an Ink shell, and the loop as an event stream that drives it | planned |
+| | | [b](./learn/phase-2b.md) Glob and Grep, parallel calls, unit tests | done |
+| 3 | TUI and evals | [a](./learn/phase-3a.md) an Ink chat driven by the loop's events | next |
+| | | [b](./learn/phase-3b.md) an input box with history and paste, a status bar, Ctrl+C | planned |
+| | | c an eval runner every later phase must pass | planned |
 | 4 | permission | the check between the model asking and the machine doing: allow, ask, deny | planned |
 | 5 | hooks | the event bus refactor, and extensions that attach to the loop | planned |
 | 6 | streaming | SSE deltas, and tool calls reassembled from fragments | planned |

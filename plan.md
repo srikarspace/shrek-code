@@ -50,8 +50,9 @@ Code blocks are whole files. When a phase changes a file an earlier phase wrote,
 entire new file so I can paste it over the old one.
 
 Evals. From Phase 3c on, every phase doc has an Eval section: the new case files in evals/cases/
-(whole files), the command `bun run eval`, and the table I should see. A phase is done when its
-test passes and the whole eval suite, old cases included, meets its threshold.
+(whole files), any runner change the phase needs, the command `bun run eval`, and the table I
+should see. A phase is done when its test passes and every case in the suite, old ones included,
+passes at least 2 of its 3 runs.
 
 TypeScript lives in the companion. Never explain syntax inline in learn/phase-N.md. Put one
 italic link line after a code block that needs it, pointing at an anchor in learn/ts/phase-N.md.
@@ -186,7 +187,8 @@ separate files, both written from P1.
 
 - `plan.md` is committed and kept truthful. `learn/` and `learn/ts/` are committed with each
   phase's code, and `evals/` with each phase's cases.
-- The OpenRouter key lives only in `.env` (gitignored) or the shell. `.env.example` is committed empty.
+- The OpenRouter key lives only in `.env` (gitignored) or the shell. `.env.example` is committed
+  empty.
 - End every phase with `git commit -m "phase N: <short title>"`, after its test passes.
 - Before each commit, `git diff --cached | grep -iE 'sk-or-|api[_-]?key'` must print nothing.
 
@@ -202,9 +204,9 @@ your-agent/
 ├── src/
 │   ├── config.ts  paths.ts  log.ts
 │   ├── llm/        client.ts  models.ts  stream.ts
-│   ├── engine/     $.ts  bus.ts  next.ts  matchers.ts  events.ts   # P5
+│   ├── engine/     $.ts  bus.ts  next.ts  matchers.ts  events.ts   # P5, create.ts P18
 │   ├── agent/      loop.ts  events.ts  systemPrompt.ts
-│   ├── tools/      types.ts registry.ts guards.ts
+│   ├── tools/      types.ts registry.ts guards.ts index.ts
 │   │               read.ts write.ts edit.ts glob.ts grep.ts bash.ts todo.ts
 │   ├── permissions/ policy.ts  store.ts           # P4
 │   ├── session/    jsonl.ts  store.ts  usage.ts
@@ -320,7 +322,7 @@ Worked example (2a): a vague Edit description, watch the model misuse it, then f
 
 ---
 
-## Phase 3: Ink TUI
+## Phase 3: Ink TUI and evals
 
 **Goal.** A terminal UI as a React render tree, fed by the loop's events without the loop knowing.
 Then an eval runner that every later phase must pass. Three parts.
@@ -331,17 +333,26 @@ dimmed `⎿ 42 lines`), `src/ui/Transcript.tsx` (`<Static>` for finished turns),
 `runAgent`, and `bin/shrek.ts` rendering `<App/>` when no `-p`, with the bridge that owns history
 and the transcript. Part b: `src/ui/Input.tsx` (history, multi-line paste via `usePaste`),
 `src/ui/StatusBar.tsx`, and Ctrl+C in `App` (abort the running turn, quit when idle,
-`exitOnCtrlC: false`). Part c: `evals/types.ts` (a case is `{ id, phase, prompt, files?, turns?,
-check }`, where `check` gets the temp dir, the events and the answer and returns pass or a reason),
-`evals/run.ts` (each case in a fresh `mkdtemp` dir with its fixture files, `runAgent` headless, k
-runs, default 3, pass at 2 of 3; prints a table and appends results to
-`~/.shrek/evals/<date>.jsonl`; flags `--phase`, `--case`, `--k`, `--model`), an `eval` script in
-`package.json`, and seed cases in `evals/cases/` for Phases 1 to 3: answer from a file, Edit one
-value, Grep then Read, parallel reads, a path outside the folder refused, two-turn history.
+`exitOnCtrlC: false`). Part c: `src/tools/index.ts` (`defaultRegistry()`, moved out of
+`bin/shrek.ts` so the runner can share it without running `main`), `evals/types.ts` (a case is `{
+id, phase, prompt, turns?, files?, k?, model?, env?, check }`; `turns` are follow-up prompts after
+`prompt`; `k`, `model` and `env` override the run per case; `check` gets the temp dir, the events,
+the messages with their meta from `onMessage`, and the final answer, and returns pass or a reason),
+and `evals/run.ts`. The runner gives each run a fresh `mkdtemp` dir holding the fixture files and
+its own `SHREK_STATE_DIR`, so nothing touches the real `~/.shrek`. It calls `runAgent` headless
+with that dir as `cwd`, and owns `history` for multi-turn cases the way the bridge does. Runs go one
+at a time; a 429 waits and retries, and an API error counts as an error, not a fail. A case passes
+when at least 2 of 3 runs pass (with `--k 1`, 1 of 1). It prints a table, appends results to the
+real `~/.shrek/evals/<date>.jsonl`, keeps a failed run's temp dir and prints its path, and exits
+nonzero if any case fails. Flags: `--phase`, `--case`, `--k`, `--model`. Also an `eval` script in
+`package.json`, `tests/evals.test.ts` for the pass-threshold math, and seed cases in `evals/cases/`
+for Phases 1 to 3: answer from a file, Edit one value, Grep then Read, read two files in one step
+(the prompt asks for it), a path outside the folder refused, two-turn history.
 
 **Test.** 3a: `shrek` opens the TUI and a two-turn chat renders tool lines and resolves "that same
 file". 3b: a paste stays one message, Up recalls it, Ctrl+C mid-turn ends it as `aborted`, Ctrl+C
-when idle exits cleanly. 3c: `bun test` stays green and `bun run eval` passes every seed case.
+when idle exits cleanly. 3c: `bun test` is green, `shrek -p` behaves as before with the registry
+moved, and `bun run eval` passes every seed case.
 
 ```
 Write the stage documents for Phase 3a and 3b, using the Goal, You write and Test in plan.md.
@@ -367,6 +378,9 @@ on, every phase adds cases and must pass the whole suite.
 Remember this: a test asks "is the code right", an eval asks "does the agent still do the job".
 Same task, several runs, a pass rate.
 
+Mention the free tier's rate limits: iterate with --phase or --case, and run the whole suite once
+at the end of a phase.
+
 Worked example: the same Edit case run five times on the free model; predict the pass rate, then
 see why a check on the file beats a check on the answer text.
 ```
@@ -384,8 +398,9 @@ the loop waiting on the prompt, and a dev-only `--yolo`.
 
 **Test.** `rm` triggers a prompt, declining makes the agent adapt, remember survives a restart.
 
-**Eval.** The runner gains scripted approval answers. With "no" to `rm`, the file still exists and
-the answer says it was declined, with no second `rm`. A read-only task asks nothing.
+**Eval.** Cases gain `approvals?`, scripted answers the runner feeds to the approval callback.
+With "no" to `rm`, the file still exists and the answer says it was declined. A read-only task
+asks nothing.
 
 ```
 Write the stage document for Phase 4, using the Goal, You write and Test in plan.md.
@@ -444,7 +459,8 @@ in `App.tsx`, a spinner with elapsed time, Esc to abort via `AbortController`.
 the transcript.
 
 **Eval.** Streaming on for every case. All earlier cases still pass, which proves tool calls
-rebuilt from pieces parse. One new case makes three calls in one reply.
+rebuilt from pieces parse. One new case asks for three reads in one step and checks all three
+results came back.
 
 ```
 Write the stage document for Phase 6, using the Goal, You write and Test in plan.md.
@@ -472,8 +488,9 @@ showing cost and context-window percentage, `--resume` and `--continue`.
 **Test.** `--continue` restores a session. Token counts match openrouter.ai/activity. One
 `qwen/qwen3.8-flash` request proves the dollar math.
 
-**Eval.** The two-turn case reruns as two processes joined by `--continue`. Every run records
-nonzero token usage.
+**Eval.** The runner gains a CLI mode that spawns `bin/shrek.ts -p` with the case's dir and state
+dir. The two-turn case reruns as two processes joined by `--continue`. Every run records nonzero
+token usage in its message meta.
 
 ```
 Write the stage document for Phase 7, using the Goal, You write and Test in plan.md.
@@ -496,10 +513,11 @@ Worked example: compute one real response's cost by hand before writing the func
 **You write.** `src/tools/todo.ts` (`content`, `status`, `activeForm`; exactly one `in_progress`;
 accepts a JSON string too), `ui/TodoList.tsx`, a system-prompt section on when to use it.
 
-**Test.** A six-step task run with and without TodoWrite; record the difference. Checklist renders live.
+**Test.** A six-step task run with and without TodoWrite; record the difference. Checklist
+renders live.
 
-**Eval.** A six-step fixture task ends with every todo `completed` and its check passing. Run it
-with TodoWrite off and record both pass rates.
+**Eval.** A six-step fixture task ends with every todo `completed` and its check passing. A second
+copy sets `env` to turn TodoWrite off; record both pass rates.
 
 ```
 Write the stage document for Phase 8, using the Goal, You write and Test in plan.md.
@@ -581,7 +599,7 @@ command, `PreCompact` and `PostCompact` hooks.
 **Test.** A task larger than the window completes. A test proves no strategy leaves a
 `tool_call_id` without its reply.
 
-**Eval.** A forced tiny context window. A task that reads many files still answers a fact from the
+**Eval.** A forced tiny context window, set through the case's `env`. A task that reads many files still answers a fact from the
 first one, and no `tool_call_id` is left without its reply.
 
 ```
@@ -610,8 +628,9 @@ plus a `MEMORY.md` index, `context/agentsMd.ts` (walk cwd to git root for `AGENT
 **Test.** A preference stated in one session is honored in the next. An `AGENTS.md` saying "always
 use pnpm" is obeyed.
 
-**Eval.** A fixture `AGENTS.md` says "always use pnpm": every install in Bash uses pnpm. A
-preference saved in run one is followed in run two.
+**Eval.** Cases gain `sessions?`: several sessions in one dir and state dir, each with its own
+history. A fixture `AGENTS.md` says "always use pnpm": no Bash command uses npm or yarn. A
+preference saved in session one is followed in session two.
 
 ```
 Write the stage document for Phase 12, using the Goal, You write and Test in plan.md.
@@ -691,8 +710,8 @@ durable `~/.shrek/schedule.json`), `ScheduleTask ListSchedules CancelSchedule` t
 **Test.** A job one minute out survives a restart and fires. A bad field is rejected by name.
 Tests use a fake clock.
 
-**Eval.** "Remind me every weekday at 9" writes one entry to `schedule.json` with
-`0 9 * * 1-5`.
+**Eval.** "Remind me every weekday at 9" writes one entry to the case's own `schedule.json` (in
+its `SHREK_STATE_DIR`, never the real one) with `0 9 * * 1-5`.
 
 ```
 Write the stage document for Phase 15, using the Goal, You write and Test in plan.md.
@@ -717,7 +736,9 @@ bus, `TeammateIdle`, `WorktreeCreate`, `WorktreeRemove` hooks.
 **Test.** Three teammates, five tasks, each claimed exactly once, ten runs in a row. Two teammates
 editing one file in separate worktrees both survive the merge.
 
-**Eval.** Paid model, k=1. Three teammates and five fixture tasks: each claimed once, every task's
+**Eval.** Cases gain a `paid` tag; the runner skips paid cases unless `--paid` is passed, and
+the end-of-phase run always passes it. This case sets `model` to the paid fallback and `k: 1`.
+Three teammates and five fixture tasks: each claimed once, every task's
 check passes.
 
 ```
@@ -801,8 +822,8 @@ registered as a slash command.
 **Test.** A three-step run killed after step 2 resumes without redoing it. The concurrency cap
 holds under a 20-step fan-out.
 
-**Eval.** A three-step workflow killed after step 2 and resumed: the journal shows steps 1 and 2
-ran once.
+**Eval.** A three-step workflow killed after step 2 (through the runner's CLI mode) and resumed:
+the journal shows steps 1 and 2 ran once.
 
 ```
 Write the stage document for Phase 19, using the Goal, You write and Test in plan.md.
@@ -857,7 +878,8 @@ complete, delete and filter, and localStorage persistence; then run the build an
 produces an app where `bun run build` passes. Rerun on `qwen/qwen3-coder-30b-a3b-instruct` and
 record the difference.
 
-**Eval.** The capstone joins the suite as a paid, k=1 case: `bun run build` exits 0.
+**Eval.** The capstone joins the suite as a `paid`, k=1 case: `bun run build` exits 0. It needs
+the network and takes minutes, so it runs only with `--paid`.
 
 ```
 Write the stage document for Phase 21, using the Goal, You write and Test in plan.md. Only
@@ -877,7 +899,7 @@ compaction losing a path, the model never verifying its work.
 
 ## Verification (whole system)
 
-1. `bun test` passes every phase's tests, and `bun run eval` meets its threshold on every case.
+1. `bun test` passes every phase's tests, and `bun run eval --paid` passes every case.
 2. `shrek --version` resolves config; `SHREK_MODEL` overrides.
 3. `shrek -p "read package.json and list the deps"` runs headless.
 4. TUI: chat, approve a Write, Esc a long reply, `/cost`, quit, `--continue`.
@@ -893,5 +915,9 @@ compaction losing a path, the model never verifying its work.
 ## Cost
 
 P0 to P15 run free. P7's check plus the paid runs in P16, P18, P20 and P21 cost about $0.50 to
-$1.50. Total under $2. Evals run on the free model at k=3; the paid cases from P16 on run at k=1,
-which adds a few cents per full run.
+$1.50. Total under $2. Evals run on the free model at k=3; the paid cases from P16 on run at k=1
+and only with `--paid`, which adds a few cents per end-of-phase run.
+
+Free models on OpenRouter are rate limited per minute and per day (the daily cap is much higher
+once the account holds a few dollars of credit). A full suite late in the plan is a few hundred
+requests, so iterate with `--phase` or `--case` and run everything once per phase.
