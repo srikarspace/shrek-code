@@ -15,7 +15,7 @@ export type RunOptions = {
   /** The cap. Twenty rounds is more than any sane task needs. */
   maxSteps?: number
   signal?: AbortSignal
-    /** Called for every message added to the array, in order. The transcript writer. */
+  /** Called for every message added to the array, in order. The transcript writer. */
   onMessage?: (message: ChatCompletionMessageParam, meta?: MessageMeta) => Promise<void>
 }
 
@@ -36,7 +36,7 @@ export async function* runAgent(opts: RunOptions): AsyncGenerator<AgentEvent, vo
   const turnId = crypto.randomUUID()
   const startedAt = Date.now()
 
-  const schemas = opts.registry.toOpenAITools();
+  const schemas = opts.registry.toOpenAITools()
   const ctx: ToolContext = { cwd, signal, readFiles: new Set() }
 
   const messages: ChatCompletionMessageParam[] = []
@@ -89,12 +89,20 @@ export async function* runAgent(opts: RunOptions): AsyncGenerator<AgentEvent, vo
       for (const call of calls) {
         const { name, line } = opts.registry.renderCall(call)
         yield { type: 'turn.step', turnId, step, kind: 'tool', id: call.id, name, line }
+      }
+      
+      const results = await Promise.all(
+        calls.map(async (call) => {
+          const calledAt = Date.now()
+          const result = await opts.registry.dispatch(call, ctx)
+          return { ...result, durationMs: Date.now() - calledAt }
+        }),
+      )
 
-        const calledAt = Date.now()
-        const result = await opts.registry.dispatch(call, ctx)
+      for (const result of results) {
         await add(
           { role: 'tool', tool_call_id: result.id, content: result.output },
-          { step, isError: result.isError, durationMs: Date.now() - calledAt },
+          { step, isError: result.isError, durationMs: result.durationMs },
         )
         yield { type: 'turn.step', turnId, step, kind: 'result', id: result.id, output: result.output }
       }

@@ -28,9 +28,9 @@ one. Phase 9's sub-agents are mostly Grep and Read in a loop.
 |---|---|
 | `src/tools/glob.ts` | new: find files by name pattern, newest first |
 | `src/tools/grep.ts` | new: find text inside files (ripgrep, or plain JS if it is missing) |
-| `src/agent/loop.ts` | replaced: run a batch of calls at once, answer them in order |
+| `src/agent/loop.ts` | replaced: run a batch of calls at once, answer them in order, time each one |
 | `src/agent/systemPrompt.ts` | replaced: one new line telling the model to search first |
-| `bin/shrek.ts` | replaced: register the two new tools |
+| `bin/shrek.ts` | replaced: register the two new tools, write timings and the turn's end to the transcript |
 | `tests/tools.test.ts` | new: every tool and error path, no model, no network |
 
 TypeScript help for this phase: [`learn/ts/phase-2b.md`](./ts/phase-2b.md).
@@ -257,8 +257,10 @@ async function withRipgrep(rg: string, args: Args, mode: Mode, root: string, ctx
 async function withJavaScript(args: Args, mode: Mode, root: string) {
   const re = new RegExp(args.pattern, args['-i'] ? 'i' : '')
   const lines: string[] = []
+  // ripgrep matches a glob with no slash against the file name at any depth. Bun.Glob does not.
+  const pattern = !args.glob ? '**/*' : args.glob.includes('/') ? args.glob : `**/${args.glob}`
 
-  for await (const rel of new Bun.Glob(args.glob ?? '**/*').scan({ cwd: root, onlyFiles: true })) {
+  for await (const rel of new Bun.Glob(pattern).scan({ cwd: root, onlyFiles: true })) {
     if (SKIP.test(rel)) continue
     const file = Bun.file(join(root, rel))
     if (file.size > MAX_FILE_BYTES) continue
@@ -311,6 +313,8 @@ export const grep: Tool<Args> = {
 - `--regexp` before the pattern stops a pattern like `-rf` being read as a flag.
 - No `g` flag on the `RegExp`. With `g`, calling `.test` repeatedly skips every other match.
 - `SHREK_GREP=js` forces the fallback, so the test can check both engines agree.
+- `glob: '*.ts'` means "any `.ts` file, any depth" to ripgrep but "top level only" to `Bun.Glob`.
+  The fallback adds `**/` to a glob with no `/` so both engines answer the same.
 
 ### 3. src/agent/systemPrompt.ts
 
@@ -340,7 +344,10 @@ export function systemPrompt(cwd: string): string {
 **Why.** Grep and Bash can take seconds. Running a batch one by one makes the user wait for the sum;
 running them together makes them wait for the slowest.
 
-Only the tool-call section changed: one loop of `yield`s, one `Promise.all`, one loop of appends.
+Two changes. The tool-call section is now one loop of `yield`s, one `Promise.all`, one loop of
+appends. And every message goes into the transcript with a `MessageMeta` next to it: which step,
+which model, tokens used, how long it took. The message array the model sees stays clean; the facts
+are for you, reading the JSONL later to see where a turn spent its time.
 
 ```ts
 import type OpenAI from 'openai'
@@ -361,7 +368,17 @@ export type RunOptions = {
   maxSteps?: number
   signal?: AbortSignal
   /** Called for every message added to the array, in order. The transcript writer. */
-  onMessage?: (message: ChatCompletionMessageParam) => Promise<void>
+  onMessage?: (message: ChatCompletionMessageParam, meta?: MessageMeta) => Promise<void>
+}
+
+/** Facts about a message that are not part of it: what it cost, how long it took. */
+export type MessageMeta = {
+  step?: number
+  model?: string
+  usage?: unknown
+  latencyMs?: number
+  isError?: boolean
+  durationMs?: number
 }
 
 export async function* runAgent(opts: RunOptions): AsyncGenerator<AgentEvent, void, void> {
@@ -375,9 +392,9 @@ export async function* runAgent(opts: RunOptions): AsyncGenerator<AgentEvent, vo
   const ctx: ToolContext = { cwd, signal, readFiles: new Set() }
 
   const messages: ChatCompletionMessageParam[] = []
-  async function add(message: ChatCompletionMessageParam): Promise<void> {
+  async function add(message: ChatCompletionMessageParam, meta?: MessageMeta): Promise<void> {
     messages.push(message)
-    await opts.onMessage?.(message)
+    await opts.onMessage?.(message, meta)
   }
 
   await add({ role: 'system', content: systemPrompt(cwd) })
@@ -397,6 +414,7 @@ export async function* runAgent(opts: RunOptions): AsyncGenerator<AgentEvent, vo
       }
 
       await debug('request', { model: opts.model, step, messages })
+      const requestedAt = Date.now()
       const response = await opts.client.chat.completions.create(
         { model: opts.model, messages, tools: schemas, max_tokens: 8000 },
         { signal },
@@ -405,7 +423,12 @@ export async function* runAgent(opts: RunOptions): AsyncGenerator<AgentEvent, vo
 
       const message = response.choices[0]?.message
       if (!message) throw new Error('the model returned no choices')
-      await add(message)
+      await add(message, {
+        step,
+        model: response.model,
+        usage: response.usage,
+        latencyMs: Date.now() - requestedAt,
+      })
 
       if (message.content) {
         answer = message.content
@@ -420,12 +443,20 @@ export async function* runAgent(opts: RunOptions): AsyncGenerator<AgentEvent, vo
         yield { type: 'turn.step', turnId, step, kind: 'tool', id: call.id, name, line }
       }
 
+      // Each call times itself, so a slow Grep doesn't make its batch-mates look slow in the log.
       const results = await Promise.all(
-        calls.map((call) => opts.registry.dispatch(call, ctx)),
+        calls.map(async (call) => {
+          const calledAt = Date.now()
+          const result = await opts.registry.dispatch(call, ctx)
+          return { ...result, durationMs: Date.now() - calledAt }
+        }),
       )
 
       for (const result of results) {
-        await add({ role: 'tool', tool_call_id: result.id, content: result.output })
+        await add(
+          { role: 'tool', tool_call_id: result.id, content: result.output },
+          { step, isError: result.isError, durationMs: result.durationMs },
+        )
         yield { type: 'turn.step', turnId, step, kind: 'result', id: result.id, output: result.output }
       }
 
@@ -453,11 +484,13 @@ export async function* runAgent(opts: RunOptions): AsyncGenerator<AgentEvent, vo
 - All display lines go out first, so you see every call before any finishes.
 - An `await` inside the first loop would make it sequential again. That's why it is three passes.
 - Appends stay in a plain `for`: transcript writes must not interleave (Phase 1b's rule).
+- Each call starts its own clock inside the `map`. One clock around the whole `Promise.all` would
+  give every call in the batch the slowest one's time.
 
 ### 5. bin/shrek.ts
 
 **Why.** A tool exists for the model only once it is in the registry. Two imports, two words in an
-array. Nothing in the loop changes, which is the whole point of 2a's registry.
+array. Nothing in the loop changes for that, which is the whole point of 2a's registry.
 
 ```ts
 #!/usr/bin/env bun
@@ -505,11 +538,13 @@ async function runPrint(config: Config, prompt: string): Promise<number> {
     registry,
     prompt,
     signal: controller.signal,
-    onMessage: (message) => transcript.write('message', { message }),
+    onMessage: (message, meta) => transcript.write('message', { message, ...meta }),
   })) {
     if (event.type === 'turn.step' && event.kind === 'tool') console.error(event.line)
 
     if (event.type === 'turn.complete') {
+      const { type, ...fields } = event
+      await transcript.write(type, fields)
       if (event.reason === 'answer') {
         console.log(event.answer)
         return 0
@@ -552,6 +587,12 @@ const code = await main(process.argv.slice(2)).catch((error: unknown) => {
 
 process.exit(code)
 ```
+
+- `onMessage` now takes the meta too and spreads it beside the message, so each JSONL line reads
+  `{ type, message, step, durationMs, ... }`. Spreading `undefined` adds nothing, so the system and
+  user messages, which have no meta, still write fine.
+- The `turn.complete` event goes into the transcript as its own line: the answer, why the turn
+  ended, and the total time.
 
 ### 6. tests/tools.test.ts
 
@@ -798,6 +839,10 @@ Same ids, different order, and no error anywhere. Put `Promise.all` back and the
 ## Gotchas
 
 - **ripgrep exit code 1 = no matches.** Treating it as an error breaks every empty search.
+- **`rg` in your shell is not `rg` for Bun.** Claude Code installs `rg` as a zsh *function*, and
+  `Bun.which` only sees real files on `PATH`, so it returns `null` and the JS fallback runs. Check
+  with `bun -e "console.log(Bun.which('rg'))"`; `brew install ripgrep` if you want the fast path.
+  The Grep test then compares the fallback with itself, which is why the glob bug above hid there.
 - **`*.ts` is not recursive in `Bun.Glob`.** Only `**/*.ts` is. The echoed pattern in
   `(no files match ...)` is how the model notices.
 - **Parallel writes to one file still race.** Nothing stops two Writes to the same path in one batch.

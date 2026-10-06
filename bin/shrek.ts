@@ -5,16 +5,17 @@ import { createClient, keyStatus } from '../src/llm/client'
 import { lookupModel } from '../src/llm/models'
 import { ensureStateDir, stateDir } from '../src/paths'
 import { runAgent } from '../src/agent/loop'
-import { bash } from '../src/tools/bash'
 import { enableDebug } from '../src/log'
 import { openTranscript } from '../src/session/jsonl'
 import { createRegistry } from '../src/tools/registry'
+import { bash } from '../src/tools/bash'
 import { read } from '../src/tools/read'
 import { write } from '../src/tools/write'
 import { edit } from '../src/tools/edit'
+import { glob } from '../src/tools/glob'
+import { grep } from '../src/tools/grep'
 
-const registry = createRegistry([bash, read, write, edit])
-
+const registry = createRegistry([bash, read, write, edit, glob, grep])
 
 function versionLines(config: Config): string[] {
   const info = lookupModel(config.model)

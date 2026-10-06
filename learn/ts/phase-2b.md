@@ -76,6 +76,10 @@ body looks like it returns an object. That is what `async` does to a return type
 [TS-13 in phase 0](./phase-0.md#ts-13). `Promise.all` unwraps one layer and you get the array of
 plain objects.
 
+The loop uses the same shape to time each call: its `async` callback returns
+`{ ...result, durationMs: Date.now() - calledAt }`, so `results` comes out as an array of tool
+results that each carry one extra `durationMs: number`. Order is still the input order.
+
 Note the extra parentheses in `async (rel) => ({ ... })`. Without them the `{` starts a function
 body rather than an object literal, and the function returns `undefined`. That is plain JavaScript
 and it is the most common typo in this file.
